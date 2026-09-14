@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Folder with paperclip -->
+  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" fill="#F39C12" fill-opacity="0.2"/>
+  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+  <!-- Small paperclip inside -->
+  <path d="M14 11l-2.5 2.5a1.5 1.5 0 0 1-2.12-2.12L12 9a1 1 0 0 1 1.41 1.41l-2 2" stroke-width="1.5"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- Document shape -->
+  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="#E74C3C" fill-opacity="0.15" stroke="#E74C3C" stroke-width="1.5"/>
+  <polyline points="14 2 14 8 20 8" fill="none" stroke="#E74C3C" stroke-width="1.5"/>
+  <!-- PDF text -->
+  <text x="12" y="16" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" font-weight="bold" fill="#E74C3C">PDF</text>
+</svg>

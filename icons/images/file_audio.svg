@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1ABC9C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Music note / headphones style -->
+  <circle cx="8" cy="18" r="3" fill="#1ABC9C" fill-opacity="0.3"/>
+  <circle cx="16" cy="18" r="3" fill="#1ABC9C" fill-opacity="0.3"/>
+  <line x1="8" y1="18" x2="8" y2="8"/>
+  <line x1="16" y1="18" x2="16" y2="8"/>
+  <path d="M8 8c0-2 2-4 4-4s4 2 4 4" fill="none"/>
+  <!-- Sound waves -->
+  <path d="M19 10c1 1 1 4 0 5" fill="none"/>
+  <path d="M21 8c2 2 2 7 0 9" fill="none"/>
+</svg>

@@ -1,0 +1,38 @@
+{
+  "default_format": "word",
+  "open_after_export": true,
+  "include_header": true,
+  "translate_fields": true,
+  "column_widths": {
+    "name": 7,
+    "accounts": 7,
+    "ownership": 7,
+    "country": 7,
+    "importance": 7,
+    "id": 7,
+    "city": 7,
+    "description": 7,
+    "note": 7,
+    "link_sources": 7,
+    "date_creation": 7,
+    "type": 7,
+    "date_entry": 7,
+    "date_modified": 7
+  },
+  "last_selected_columns": [
+    "id",
+    "name",
+    "type",
+    "link_sources",
+    "importance",
+    "country",
+    "city",
+    "description",
+    "accounts",
+    "note",
+    "ownership",
+    "date_entry",
+    "date_creation",
+    "date_modified"
+  ]
+}

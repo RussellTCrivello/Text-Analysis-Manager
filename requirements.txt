@@ -1,0 +1,24 @@
+# Text Analysis Manager - Dependencies
+# Install with: pip install -r requirements.txt
+
+# GUI Framework
+PyQt5>=5.15.9
+
+# Image Processing
+Pillow>=10.0.0
+
+# Document Export - Word
+python-docx>=1.0.0
+
+# Document Export - Excel
+openpyxl>=3.1.2
+
+# Charts and Visualization
+matplotlib>=3.7.0
+
+# Arabic Text Support
+arabic_reshaper>=3.0.0
+python-bidi>=0.4.2
+
+# Build Tools (for creating installer)
+pyinstaller>=6.0.0
