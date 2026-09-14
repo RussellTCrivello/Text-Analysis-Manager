@@ -11,14 +11,14 @@ from PyQt5.QtWidgets import (
     QComboBox, QLineEdit, QFileDialog, QMessageBox,
     QFormLayout, QFrame, QSpinBox, QWidget
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QFont
 
 from translations.translations import TranslationManager
 from utils.logger import get_logger
 from utils.print_utils import PrintSettings, get_print_settings
 from styles.styles import AppStyles
-from icons.icon_manager import setup_icon_button
+from icons.icon_manager import setup_icon_button, get_icon
 
 logger = get_logger(__name__)
 
@@ -144,14 +144,15 @@ class TimelineExportDialog(QDialog):
         self.format_group = QButtonGroup(self)
         
         formats = [
-            (self.FORMAT_WORD, '📘', 'export_word_label'),
-            (self.FORMAT_EXCEL, '📗', 'export_excel_label'),
-            (self.FORMAT_PDF, '📕', 'export_pdf_label'),
+            (self.FORMAT_WORD, 'export_word', 'export_word_label'),
+            (self.FORMAT_EXCEL, 'export_excel', 'export_excel_label'),
+            (self.FORMAT_PDF, 'export_pdf', 'export_pdf_label'),
         ]
         
-        for fmt, icon, label_key in formats:
-            label_text = f"{icon} {self.translator.tr(label_key)}"
-            radio = QRadioButton(label_text)
+        for fmt, icon_name, label_key in formats:
+            radio = QRadioButton(self.translator.tr(label_key))
+            radio.setIcon(get_icon(icon_name, 18))
+            radio.setIconSize(QSize(18, 18))
             radio.setProperty('format', fmt)
             if fmt == self.FORMAT_WORD:
                 radio.setChecked(True)

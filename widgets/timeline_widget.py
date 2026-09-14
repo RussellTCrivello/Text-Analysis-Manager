@@ -155,8 +155,9 @@ class StatisticsCard(QFrame):
         header_layout.setSpacing(spacing)
         
         if self.icon:
-            icon_label = QLabel(self.icon)
-            icon_label.setFont(QFont(AppStyles.FONT_FAMILY, 16))
+            icon_label = QLabel()
+            icon_label.setPixmap(get_icon(self.icon, 18).pixmap(18, 18))
+            icon_label.setToolTip(self.title)
             header_layout.addWidget(icon_label)
         
         self.title_label = QLabel(self.title)
@@ -509,7 +510,7 @@ class AnalysisPanel(QFrame):
         layout.setSpacing(10)
         
         # Title
-        title_text = self.translator.tr('timeline_analysis_title') if self.translator else "📊 Timeline Analysis"
+        title_text = self.translator.tr('timeline_analysis_title') if self.translator else "Timeline Analysis"
         title = QLabel(title_text)
         title.setFont(QFont('Segoe UI', 12, QFont.Bold))
         title.setStyleSheet("color: #2C3E50; padding: 5px;")
@@ -576,7 +577,7 @@ class AnalysisPanel(QFrame):
             for event_type, count in type_counts.most_common():
                 percentage = (count / total * 100) if total > 0 else 0
                 type_name = event_type.title()
-                analysis_parts.append(f"  • {type_name}: {count} ({percentage:.1f}%)")
+                analysis_parts.append(f"  {type_name}: {count} ({percentage:.1f}%)")
             
             if classifications:
                 top_class_label = self.translator.tr('timeline_analysis_top_classifications') if self.translator else "Top Classifications:"
@@ -584,7 +585,7 @@ class AnalysisPanel(QFrame):
                 analysis_parts.append(f"<b>{top_class_label}</b>")
                 for classification, count in classifications.most_common(5):
                     percentage = (count / total * 100) if total > 0 else 0
-                    analysis_parts.append(f"  • {classification}: {count} ({percentage:.1f}%)")
+                    analysis_parts.append(f"  {classification}: {count} ({percentage:.1f}%)")
             
             if most_active_month:
                 most_active_label = self.translator.tr('timeline_analysis_most_active') if self.translator else "Most Active Period:"
@@ -682,7 +683,7 @@ class TimelineAxisWidget(QWidget):
 class TimelineEventWidget(QFrame):
     """
     Enhanced event widget with F-pattern layout and design system
-    Follows F-pattern reading: Date → Title → Description → Tags
+    Follows F-pattern reading: Date, title, description, and tags
     """
     
     clicked = pyqtSignal(dict)
@@ -755,7 +756,7 @@ class TimelineEventWidget(QFrame):
         date_layout.addStretch()
         layout.addWidget(date_widget)
         
-        # Content section (F-pattern: Title → Description → Tags)
+        # Content section (F-pattern: title, description, tags)
         content_layout = QVBoxLayout()
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(TimelineDesignSystem.get_spacing(1))  # 8px
@@ -789,15 +790,15 @@ class TimelineEventWidget(QFrame):
         classification = self.event_data.get('classification')
         
         if people:
-            badge = self.create_badge("👤", people, "#3498DB", config)
+            badge = self.create_badge("user", people, "#3498DB", config)
             meta_layout.addWidget(badge)
         
         if places:
-            badge = self.create_badge("📍", places, "#E74C3C", config)
+            badge = self.create_badge("location", places, "#E74C3C", config)
             meta_layout.addWidget(badge)
         
         if classification:
-            badge = self.create_badge("🏷️", classification, "#9B59B6", config)
+            badge = self.create_badge("tag", classification, "#9B59B6", config)
             meta_layout.addWidget(badge)
         
         meta_layout.addStretch()
@@ -806,11 +807,18 @@ class TimelineEventWidget(QFrame):
         # Source (optional, below tags)
         source = self.get_event_source()
         if source:
-            source_label = QLabel(f"📰 {source}")
+            source_row = QHBoxLayout()
+            source_icon = QLabel()
+            source_icon.setPixmap(get_icon('newspaper', 16).pixmap(16, 16))
+            source_icon.setToolTip(self.translator.tr('lbl_source'))
+            source_label = QLabel(source)
             source_label.setFont(QFont(AppStyles.FONT_FAMILY, config['font_meta']))
             muted_color = colors.get('TEXT_MUTED', '#95A5A6')
             source_label.setStyleSheet(f"color: {muted_color}; font-style: italic;")
-            content_layout.addWidget(source_label)
+            source_row.addWidget(source_icon)
+            source_row.addWidget(source_label)
+            source_row.addStretch()
+            content_layout.addLayout(source_row)
         
         layout.addLayout(content_layout, 1)
         self.setCursor(Qt.PointingHandCursor)
@@ -834,8 +842,9 @@ class TimelineEventWidget(QFrame):
                                        badge_padding//2, badge_padding//2)
         badge_layout.setSpacing(badge_padding//2)
         
-        icon_label = QLabel(icon)
-        icon_label.setFont(QFont(AppStyles.FONT_FAMILY, config['font_meta']))
+        icon_label = QLabel()
+        icon_label.setPixmap(get_icon(icon, 16).pixmap(16, 16))
+        icon_label.setToolTip(icon.replace('_', ' ').title())
         text_label = QLabel(text)
         text_label.setFont(QFont(AppStyles.FONT_FAMILY, config['font_meta'], QFont.Bold))
         text_label.setStyleSheet(f"color: {accent_color};")
@@ -1123,10 +1132,10 @@ class TimelineWidget(QWidget):
         filtered_label = self.translator.tr('timeline_stats_filtered')
         sources_label = self.translator.tr('timeline_stats_sources')
         analyses_label = self.translator.tr('timeline_stats_analyses')
-        self.total_card = StatisticsCard(total_label, "0", "📅", "#3498DB", self.density_mode)
-        self.filtered_card = StatisticsCard(filtered_label, "0", "🔍", "#27AE60", self.density_mode)
-        self.sources_card = StatisticsCard(sources_label, "0", "📰", "#E74C3C", self.density_mode)
-        self.analyses_card = StatisticsCard(analyses_label, "0", "📊", "#9B59B6", self.density_mode)
+        self.total_card = StatisticsCard(total_label, "0", "calendar", "#3498DB", self.density_mode)
+        self.filtered_card = StatisticsCard(filtered_label, "0", "preview", "#27AE60", self.density_mode)
+        self.sources_card = StatisticsCard(sources_label, "0", "newspaper", "#E74C3C", self.density_mode)
+        self.analyses_card = StatisticsCard(analyses_label, "0", "statistics", "#9B59B6", self.density_mode)
         
         stats_layout.addWidget(self.total_card, 0, 0)
         stats_layout.addWidget(self.filtered_card, 0, 1)
@@ -1893,11 +1902,14 @@ class TimelineWidget(QWidget):
     def update_statistics(self):
         """Update statistics cards"""
         total = len(self.events)
-        filtered = len(self.filtered_events)
+        # Statistics describe the full filtered set, not only the visible
+        # pagination page.
+        statistics_events = self._full_filtered_events
+        filtered = len(statistics_events)
         
         # Count sources and analyses
-        sources_count = len(set(e.get('source_id') for e in self.filtered_events if e.get('source_id')))
-        analyses_count = len([e for e in self.filtered_events if e.get('analysis_id')])
+        sources_count = len(set(e.get('source_id') for e in statistics_events if e.get('source_id')))
+        analyses_count = len([e for e in statistics_events if e.get('analysis_id')])
         
         # Update using the new update_value method
         self.total_card.update_value(f"{total:,}")
@@ -1958,6 +1970,11 @@ class TimelineWidget(QWidget):
         if not hasattr(self, '_full_filtered_events') or not self._full_filtered_events:
             self.filtered_events = []
             self.refresh_display()
+            if hasattr(self, 'status_label'):
+                showing_text = self.translator.tr('pagination_showing', default='Showing')
+                of_text = self.translator.tr('pagination_of', default='of')
+                records_text = self.translator.tr('lbl_records', default='records')
+                self.status_label.setText(f"{showing_text} 0-0 {of_text} 0 {records_text}")
             return
         
         if not self.pagination:
@@ -1979,13 +1996,14 @@ class TimelineWidget(QWidget):
         of_text = self.translator.tr('pagination_of', default='of')
         records_text = self.translator.tr('lbl_records', default='records')
         
+        range_text = f"{start + 1}-{start + page_count}" if page_count else "0-0"
         if total_filtered < total_count:
             self.status_label.setText(
-                f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_filtered} ({total_count} {records_text})"
+                f"{showing_text} {range_text} {of_text} {total_filtered} ({total_count} {records_text})"
             )
         else:
             self.status_label.setText(
-                f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_count} {records_text}"
+                f"{showing_text} {range_text} {of_text} {total_count} {records_text}"
             )
     
     def on_page_changed(self, page: int):
@@ -2153,7 +2171,7 @@ class TimelineWidget(QWidget):
         """Handle chart type change"""
         self.current_chart_type = self.chart_type_combo.currentData()
         if hasattr(self, 'chart_widget'):
-            self.chart_widget.update_chart(self.filtered_events, self.current_chart_type)
+            self.chart_widget.update_chart(self._full_filtered_events, self.current_chart_type)
     
     def set_scroll_enabled(self, enabled: bool):
         """Enable or disable internal scroll area (for unified scroll)"""
@@ -2190,7 +2208,7 @@ class TimelineWidget(QWidget):
             # Print dialog
             print_dialog = QPrintDialog(printer, self)
             if print_dialog.exec_() == QPrintDialog.Accepted:
-                from PyQt5.QtWidgets import QTextDocument
+                from PyQt5.QtGui import QTextDocument
                 doc = QTextDocument()
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, settings)
@@ -2261,7 +2279,7 @@ class TimelineWidget(QWidget):
                 # PDF export using print HTML
                 from utils.print_utils import generate_timeline_print_html, get_print_settings, print_document_with_page_numbers
                 from PyQt5.QtPrintSupport import QPrinter
-                from PyQt5.QtWidgets import QTextDocument
+                from PyQt5.QtGui import QTextDocument
                 
                 html = generate_timeline_print_html(
                     events_to_export,
@@ -2282,15 +2300,19 @@ class TimelineWidget(QWidget):
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, settings)
             
-            # Open file if requested
-            if open_after and os.path.exists(file_path):
+            if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
+                raise IOError(f"Export did not create a valid output file: {file_path}")
+
+            # Opening the exported file is optional; a viewer failure must not
+            # be confused with an export failure.
+            if open_after:
                 try:
                     if sys.platform == 'win32':
                         os.startfile(file_path)
                     elif sys.platform == 'darwin':
-                        subprocess.call(['open', file_path])
+                        subprocess.run(['open', file_path], check=True)
                     else:
-                        subprocess.call(['xdg-open', file_path])
+                        subprocess.run(['xdg-open', file_path], check=True)
                 except Exception as e:
                     logger.warning(f"Could not open file: {e}")
             
@@ -2356,7 +2378,7 @@ class TimelineWidget(QWidget):
         
         # Refresh chart widget by updating current chart
         if hasattr(self, 'chart_widget') and hasattr(self, 'current_chart_type'):
-            self.chart_widget.update_chart(self.filtered_events, self.current_chart_type)
+            self.chart_widget.update_chart(self._full_filtered_events, self.current_chart_type)
         
         # Refresh analysis panel
         if hasattr(self, 'analysis_panel'):

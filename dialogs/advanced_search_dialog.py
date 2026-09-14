@@ -19,6 +19,7 @@ from styles.styles import AppStyles
 from utils.logger import get_logger
 from utils.search_history import get_search_history_manager
 from db.db_manager import DatabaseManager
+from icons.icon_manager import setup_icon_button
 
 logger = get_logger(__name__)
 
@@ -38,7 +39,6 @@ class AdvancedSearchDialog(QDialog):
         
         self.setWindowTitle(translator.tr('advanced_search') if hasattr(translator, 'tr') else 'Advanced Search')
         # Apply fixed size to prevent resizing on button clicks or content changes
-        from styles.styles import AppStyles
         AppStyles.apply_fixed_size(self, 1000, 800)
         self._apply_rtl_direction()
         self.setup_ui()
@@ -104,7 +104,6 @@ class AdvancedSearchDialog(QDialog):
         # Buttons - properly aligned in a single row
         btn_layout = QHBoxLayout()
         btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
-        from styles.styles import AppStyles
         btn_layout.setSpacing(AppStyles.get_spacing(2))  # 16px - 8px grid spacing
         
         self.btn_search = QPushButton(self.translator.tr('btn_search') if hasattr(self.translator, 'tr') else 'Search')
@@ -146,7 +145,7 @@ class AdvancedSearchDialog(QDialog):
         results_group = QGroupBox(self.translator.tr('search_results') if hasattr(self.translator, 'tr') else 'Results')
         results_layout = QVBoxLayout(results_group)
         
-        self.results_count_label = QLabel("0 results")
+        self.results_count_label = QLabel(self.translator.tr('search_results_count', count=0))
         results_layout.addWidget(self.results_count_label)
         
         self.results_table = QTableWidget()
@@ -278,8 +277,14 @@ class AdvancedSearchDialog(QDialog):
         condition_layout.addWidget(date_edit)
         
         # Remove button
-        btn_remove = QPushButton("×")
-        btn_remove.setMaximumWidth(30)
+        btn_remove = QPushButton()
+        setup_icon_button(
+            btn_remove,
+            'btn_close',
+            self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Remove condition',
+            size=18
+        )
+        btn_remove.setAccessibleName(self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Remove condition')
         btn_remove.clicked.connect(lambda: self.remove_condition(condition_widget))
         condition_layout.addWidget(btn_remove)
         
@@ -316,9 +321,22 @@ class AdvancedSearchDialog(QDialog):
         self.add_condition()
     
     def get_current_conditions(self) -> Dict:
-        """Get current conditions from UI"""
+        """Get current conditions from UI.
+
+        Dictionary keys remain backwards-compatible for saved searches. When
+        the same field is used more than once, an internal suffix preserves
+        both conditions instead of silently overwriting the first one.
+        """
         conditions = {}
         logic = self.logic_combo.currentText()
+
+        def add_condition(field: str, condition: Dict):
+            key = field
+            suffix = 2
+            while key in conditions:
+                key = f"{field}__condition_{suffix}"
+                suffix += 1
+            conditions[key] = condition
         
         for i in range(self.conditions_layout.count()):
             item = self.conditions_layout.itemAt(i)
@@ -332,28 +350,21 @@ class AdvancedSearchDialog(QDialog):
                 if field_combo and operator_combo:
                     field = field_combo.currentText()
                     operator = operator_combo.currentText()
+                    if not field:
+                        continue
                     
                     # Handle NULL operators
                     if 'NULL' in operator:
-                        conditions[field] = {
-                            'operator': operator,
-                            'value': None
-                        }
+                        add_condition(field, {'operator': operator, 'value': None})
                     elif date_edit and date_edit.isVisible():
                         value = date_edit.date().toString('yyyy-MM-dd')
-                        conditions[field] = {
-                            'operator': operator,
-                            'value': value
-                        }
+                        add_condition(field, {'operator': operator, 'value': value})
                     elif value_edit and value_edit.text():
                         value = value_edit.text()
                         # Add wildcards for LIKE operator if not present
                         if operator in ['LIKE', 'NOT LIKE'] and '%' not in value:
                             value = f'%{value}%'
-                        conditions[field] = {
-                            'operator': operator,
-                            'value': value
-                        }
+                        add_condition(field, {'operator': operator, 'value': value})
         
         conditions['logic'] = logic
         return conditions
@@ -371,6 +382,10 @@ class AdvancedSearchDialog(QDialog):
         for field, cond in conditions.items():
             if field == 'logic':
                 continue
+
+            # Restore the UI field for repeated-condition keys generated by
+            # get_current_conditions().
+            display_field = str(field).split('__condition_', 1)[0]
             
             if not first:
                 self.add_condition()
@@ -388,7 +403,7 @@ class AdvancedSearchDialog(QDialog):
                     date_edit = widget.findChild(QDateEdit, "date_edit")
                     
                     if field_combo:
-                        idx = field_combo.findText(field)
+                        idx = field_combo.findText(display_field)
                         if idx >= 0:
                             field_combo.setCurrentIndex(idx)
                     
@@ -400,7 +415,7 @@ class AdvancedSearchDialog(QDialog):
                         
                         value = cond.get('value')
                         if value is not None:
-                            if 'date' in field.lower() and date_edit:
+                            if 'date' in display_field.lower() and date_edit:
                                 date_edit.setDate(QDate.fromString(str(value), 'yyyy-MM-dd'))
                             elif value_edit:
                                 # Remove LIKE wildcards for display
@@ -414,8 +429,11 @@ class AdvancedSearchDialog(QDialog):
         # Check if we have any conditions
         has_conditions = any(k != 'logic' for k in conditions.keys())
         if not has_conditions:
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "Please add at least one search condition")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('search_add_condition_required')
+            )
             return
         
         # Execute search
@@ -450,12 +468,13 @@ class AdvancedSearchDialog(QDialog):
             if field == 'logic':
                 continue
             if isinstance(cond, dict):
+                display_field = str(field).split('__condition_', 1)[0]
                 operator = cond.get('operator', '=')
                 value = cond.get('value', '')
                 if value:
-                    parts.append(f"{field} {operator} '{value}'")
+                    parts.append(f"{display_field} {operator} '{value}'")
                 else:
-                    parts.append(f"{field} {operator}")
+                    parts.append(f"{display_field} {operator}")
         
         return f" {logic} ".join(parts) if parts else (self.translator.tr('search_empty') if self.translator and hasattr(self.translator, 'tr') else "Empty search")
     
@@ -463,7 +482,7 @@ class AdvancedSearchDialog(QDialog):
         """Display search results"""
         if not self.results:
             self.results_table.setRowCount(0)
-            self.results_count_label.setText("0 results")
+            self.results_count_label.setText(self.translator.tr('search_results_count', count=0))
             return
         
         # Get column names from first result
@@ -480,7 +499,9 @@ class AdvancedSearchDialog(QDialog):
                     self.results_table.setItem(row_idx, col_idx, item)
             
             self.results_table.resizeColumnsToContents()
-            self.results_count_label.setText(f"{len(self.results)} results")
+            self.results_count_label.setText(
+                self.translator.tr('search_results_count', count=len(self.results))
+            )
     
     # ==================== Saved Searches ====================
     
@@ -515,8 +536,11 @@ class AdvancedSearchDialog(QDialog):
         
         has_conditions = any(k != 'logic' for k in conditions.keys())
         if not has_conditions:
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "Please add at least one search condition to save")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('search_save_condition_required')
+            )
             return
         
         name, ok = QInputDialog.getText(
@@ -557,8 +581,11 @@ class AdvancedSearchDialog(QDialog):
         """Update an existing saved search"""
         current_item = self.saved_searches_list.currentItem()
         if not current_item:
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "Please select a saved search to update")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('search_select_saved_update')
+            )
             return
         
         search_id = current_item.data(Qt.UserRole)
@@ -577,7 +604,7 @@ class AdvancedSearchDialog(QDialog):
                 QMessageBox.information(
                     self,
                     self.translator.tr('msg_success') if hasattr(self.translator, 'tr') else 'Success',
-                    'Search updated successfully'
+                    self.translator.tr('search_updated_successfully')
                 )
                 self.load_saved_searches()
     

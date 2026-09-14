@@ -8,10 +8,59 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 from .db_config import DatabaseConfig
 from utils.duplicate_detector import DuplicateDetector
+from utils.data_validation import get_validator
 
 
 class DatabaseManager:
     """Manages all database operations"""
+
+    # The advanced-search dialog builds values from these tables and fields,
+    # but the method is also part of the database-facing API. Keep the
+    # identifiers whitelisted so a malformed saved search cannot turn into
+    # executable SQL.
+    _ADVANCED_SEARCH_FIELDS = {
+        'sources': {
+            'id', 'name', 'type', 'link_sources', 'importance', 'country',
+            'city', 'description', 'accounts', 'note', 'ownership',
+            'date_entry', 'date_creation', 'date_modified',
+        },
+        'contents': {
+            'id', 'title', 'content_data', 'attachments', 'note', 'importance',
+            'date_content', 'date_creation', 'date_modified', 'sources_id',
+        },
+        'content_analysis': {
+            'id', 'content_id', 'list_names_people', 'list_names_places',
+            'list_coordinates', 'coordinates', 'classification', 'list_sides',
+            'date_analysis', 'date_creation', 'date_modified',
+        },
+    }
+    _ADVANCED_SEARCH_OPERATORS = {
+        '=', '!=', 'LIKE', 'NOT LIKE', '>', '<', '>=', '<=',
+        'IS NULL', 'IS NOT NULL',
+    }
+
+    @staticmethod
+    def _validate_payload(table_name: str, data: Dict):
+        """Apply the shared backend validation schema before database writes."""
+        if not isinstance(data, dict):
+            raise ValueError(f"{table_name} data must be a dictionary")
+        is_valid, errors = get_validator().validate(table_name, data)
+        if not is_valid:
+            raise ValueError(f"Invalid {table_name} data: {'; '.join(errors)}")
+
+        # Validate foreign-key references before attempting the write so callers
+        # receive a deterministic validation error instead of a low-level
+        # sqlite3.IntegrityError wrapped as a generic database exception.
+        if table_name == 'contents' and data.get('sources_id') is not None:
+            if not DatabaseManager.get_source_by_id(data.get('sources_id')):
+                raise ValueError(
+                    f"Invalid {table_name} data: source does not exist"
+                )
+        elif table_name == 'content_analysis' and data.get('content_id') is not None:
+            if not DatabaseManager.get_content_by_id(data.get('content_id')):
+                raise ValueError(
+                    f"Invalid {table_name} data: content does not exist"
+                )
     
     @staticmethod
     def execute_query(query: str, params: tuple = None, fetch: bool = True) -> List[Dict]:
@@ -58,7 +107,8 @@ class DatabaseManager:
     
     @staticmethod
     def add_source(data: Dict) -> int:
-        """Add a new source - checks for duplicates before inserting"""
+        """Add a new source - validates and checks for duplicates before inserting"""
+        DatabaseManager._validate_payload('sources', data)
         # Check for duplicate
         is_duplicate, existing = DuplicateDetector.check_duplicate('sources', data)
         if is_duplicate:
@@ -101,7 +151,8 @@ class DatabaseManager:
     
     @staticmethod
     def update_source(source_id: int, data: Dict) -> bool:
-        """Update a source"""
+        """Update a source after validating its complete payload."""
+        DatabaseManager._validate_payload('sources', data)
         query = """
         UPDATE sources SET name = ?, type = ?, link_sources = ?, importance = ?,
                           country = ?, city = ?, description = ?, accounts = ?,
@@ -198,7 +249,8 @@ class DatabaseManager:
     
     @staticmethod
     def add_content(data: Dict) -> int:
-        """Add a new content - checks for duplicates before inserting"""
+        """Add new content after validation and duplicate checks."""
+        DatabaseManager._validate_payload('contents', data)
         # Check for duplicate
         is_duplicate, existing = DuplicateDetector.check_duplicate('contents', data)
         if is_duplicate:
@@ -237,7 +289,8 @@ class DatabaseManager:
     
     @staticmethod
     def update_content(content_id: int, data: Dict) -> bool:
-        """Update a content"""
+        """Update content after validating its complete payload."""
+        DatabaseManager._validate_payload('contents', data)
         query = """
         UPDATE contents SET title = ?, content_data = ?, attachments = ?, note = ?,
                            importance = ?, date_content = ?, sources_id = ?
@@ -378,7 +431,8 @@ class DatabaseManager:
     
     @staticmethod
     def add_content_analysis(data: Dict) -> int:
-        """Add a new content analysis - checks for duplicates before inserting"""
+        """Add analysis after validation and duplicate checks."""
+        DatabaseManager._validate_payload('content_analysis', data)
         # Check for duplicate
         is_duplicate, existing = DuplicateDetector.check_duplicate('content_analysis', data)
         if is_duplicate:
@@ -393,7 +447,7 @@ class DatabaseManager:
             data.get('content_id'),
             data.get('list_names_people'),
             data.get('list_names_places'),
-            data.get('coordinates'),  # Keep 'coordinates' in data dict, but use 'list_coordinates' in DB
+            data.get('coordinates', data.get('list_coordinates')),  # API uses either alias
             data.get('classification'),
             data.get('list_sides')
         )
@@ -415,7 +469,8 @@ class DatabaseManager:
     
     @staticmethod
     def update_content_analysis(analysis_id: int, data: Dict) -> bool:
-        """Update a content analysis"""
+        """Update analysis after validating its complete payload."""
+        DatabaseManager._validate_payload('content_analysis', data)
         query = """
         UPDATE content_analysis SET content_id = ?, list_names_people = ?,
                                   list_names_places = ?, list_coordinates = ?,
@@ -426,7 +481,7 @@ class DatabaseManager:
             data.get('content_id'),
             data.get('list_names_people'),
             data.get('list_names_places'),
-            data.get('coordinates'),  # Keep 'coordinates' in data dict, but use 'list_coordinates' in DB
+            data.get('coordinates', data.get('list_coordinates')),  # API uses either alias
             data.get('classification'),
             data.get('list_sides'),
             analysis_id
@@ -720,7 +775,7 @@ class DatabaseManager:
         return DatabaseManager.execute_query(query, (
             search_pattern, search_pattern, search_pattern, search_pattern,
             search_pattern, search_pattern, search_pattern,
-            search_pattern, search_pattern,
+            search_pattern, search_pattern, search_pattern,
             search_pattern, search_pattern, search_pattern, search_pattern
         ))
     
@@ -766,29 +821,57 @@ class DatabaseManager:
             'logic': 'AND' or 'OR'
         }
         """
+        if table_name not in DatabaseManager._ADVANCED_SEARCH_FIELDS:
+            raise ValueError(f"Unsupported table for advanced search: {table_name}")
+        if not isinstance(conditions, dict):
+            raise ValueError("Search conditions must be a dictionary")
+
         where_clauses = []
         params = []
-        logic = conditions.get('logic', 'AND')
-        
-        for field, condition in conditions.items():
-            if field == 'logic':
+        logic = str(conditions.get('logic', 'AND')).upper()
+        if logic not in {'AND', 'OR'}:
+            raise ValueError("Search logic must be AND or OR")
+
+        allowed_fields = DatabaseManager._ADVANCED_SEARCH_FIELDS[table_name]
+        for raw_field, condition in conditions.items():
+            if raw_field == 'logic':
                 continue
-            
-            operator = condition.get('operator', '=')
+            if not isinstance(condition, dict):
+                raise ValueError(f"Invalid condition for field: {raw_field}")
+
+            # The visual dialog uses suffixes when the same field is added
+            # more than once (for example, name and name__condition_2).
+            # Strip only that internal suffix before validating the SQL
+            # identifier.
+            field = str(raw_field).split('__condition_', 1)[0]
+            if field not in allowed_fields:
+                raise ValueError(f"Unsupported search field: {field}")
+
+            operator = str(condition.get('operator', '=')).upper()
+            if operator not in DatabaseManager._ADVANCED_SEARCH_OPERATORS:
+                raise ValueError(f"Unsupported search operator: {operator}")
+
+            # The public API historically exposed both names for the
+            # coordinates field; the current schema stores list_coordinates.
+            sql_field = (
+                'list_coordinates'
+                if table_name == 'content_analysis' and field == 'coordinates'
+                else field
+            )
             value = condition.get('value')
-            
-            if value is not None:
-                where_clauses.append(f"{field} {operator} ?")
+            if operator in {'IS NULL', 'IS NOT NULL'}:
+                where_clauses.append(f"{sql_field} {operator}")
+            elif value is not None:
+                where_clauses.append(f"{sql_field} {operator} ?")
                 params.append(value)
-        
+
         if not where_clauses:
             return []
-        
+
         where_clause = f" {logic} ".join(where_clauses)
         query = f"SELECT * FROM {table_name} WHERE {where_clause}"
-        
         return DatabaseManager.execute_query(query, tuple(params))
-    
+
     # ========== AUTOCOMPLETE OPERATIONS ==========
     
     @staticmethod

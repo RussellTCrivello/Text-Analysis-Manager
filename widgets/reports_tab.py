@@ -7,8 +7,10 @@ import os
 import io
 import json
 import sqlite3
+from html import escape
 import warnings
 from datetime import datetime
+from pathlib import Path
 
 # Suppress matplotlib layout warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
@@ -35,7 +37,7 @@ from PyQt5.QtPrintSupport import QPrinter, QPrintDialog, QPrintPreviewDialog
 from translations.translations import TranslationManager
 from db.db_manager import DatabaseManager
 from db.db_config import DatabaseConfig
-from icons.icon_manager import setup_icon_button
+from icons.icon_manager import setup_icon_button, get_icon
 from utils.logger import get_logger
 from utils.print_utils import PrintSettings, ExportColumnDialog, GlobalHeaderSettingsDialog, generate_print_html, get_print_settings, print_document_with_page_numbers
 from dialogs.export_preview_dialog import ExportPreviewDialog
@@ -277,18 +279,33 @@ class SavedReportDialog(QDialog):
                 pass
     
     def delete_report(self):
-        if self.selected_report:
-            reply = QMessageBox.question(
-                self, self.translator.tr('msg_confirm'),
-                self.translator.tr('msg_delete_confirm'),
-                QMessageBox.Yes | QMessageBox.No
+        if not self.selected_report:
+            return
+        try:
+            report_root = Path(self.reports_dir).resolve()
+            selected_path = Path(self.selected_report).resolve()
+            selected_path.relative_to(report_root)
+            if selected_path.suffix.lower() != '.json':
+                raise ValueError('Invalid report file')
+        except (OSError, ValueError):
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning'),
+                self.translator.tr('report_invalid_file')
             )
-            if reply == QMessageBox.Yes:
-                try:
-                    os.remove(self.selected_report)
-                    self.load_reports_list()
-                except Exception as e:
-                    QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
+            return
+
+        reply = QMessageBox.question(
+            self, self.translator.tr('msg_confirm'),
+            self.translator.tr('msg_delete_confirm'),
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                os.remove(selected_path)
+                self.load_reports_list()
+            except Exception as e:
+                QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
     
     def get_report_name(self) -> str:
         if self.mode == 'save':
@@ -323,8 +340,12 @@ class ChartDesigner(QWidget):
         container_layout.setContentsMargins(0, 0, AppStyles.get_spacing(1), AppStyles.get_spacing(1))  # 8px - 8px grid
         container_layout.setSpacing(0)
         
-        # Header button (acts as toggle) - Uses centralized styling
-        header_btn = QPushButton(f"{'▼' if expanded else '▶'} {title}")
+        # Header button (acts as toggle). Direction-independent graphical
+        # chevrons keep the control readable in both LTR and RTL layouts.
+        header_btn = QPushButton(title)
+        header_btn.setIcon(get_icon('chevron_down' if expanded else 'chevron_right', 18))
+        header_btn.setIconSize(QSize(18, 18))
+        header_btn.setProperty('expanded', expanded)
         header_btn.setObjectName("collapsibleHeader")
         header_btn.setStyleSheet(AppStyles.get_component_style('report_collapsible_header'))
         header_btn.setCursor(Qt.PointingHandCursor)
@@ -341,7 +362,10 @@ class ChartDesigner(QWidget):
         def toggle_content():
             is_visible = not content.isVisible()
             content.setVisible(is_visible)
-            header_btn.setText(f"{'▼' if is_visible else '▶'} {title.replace('▼ ', '').replace('▶ ', '')}")
+            header_btn.setProperty('expanded', is_visible)
+            header_btn.setIcon(get_icon('chevron_down' if is_visible else 'chevron_right', 18))
+            header_btn.setIconSize(QSize(18, 18))
+            header_btn.setText(title)
         
         header_btn.clicked.connect(toggle_content)
         
@@ -379,8 +403,12 @@ class ChartDesigner(QWidget):
         # View mode toggle (Chart vs Table) - Improved styling
         view_mode_layout = QHBoxLayout()
         view_mode_layout.setSpacing(AppStyles.get_spacing(1))  # 8px - 8px grid
-        self.btn_chart_view = QPushButton("📊 " + self.translator.tr('report_chart_view'))
-        self.btn_table_view = QPushButton("📋 " + self.translator.tr('report_table_view'))
+        self.btn_chart_view = QPushButton(self.translator.tr('report_chart_view'))
+        self.btn_chart_view.setIcon(get_icon('chart', 18))
+        self.btn_chart_view.setIconSize(QSize(18, 18))
+        self.btn_table_view = QPushButton(self.translator.tr('report_table_view'))
+        self.btn_table_view.setIcon(get_icon('table', 18))
+        self.btn_table_view.setIconSize(QSize(18, 18))
         
         view_mode_btn_style = """
             QPushButton {
@@ -442,12 +470,12 @@ class ChartDesigner(QWidget):
         
         # Chart types data with icons
         self.chart_types_data = [
-            ('🥧', 'report_pie_chart', 0),      # Pie
-            ('📊', 'report_bar_chart', 1),      # Bar
-            ('📈', 'report_line_chart', 2),     # Line
-            ('📉', 'report_horizontal_bar', 3), # Horizontal Bar
-            ('📐', 'report_area_chart', 4),     # Area
-            ('🍩', 'report_donut_chart', 5),    # Donut
+            ('pie_chart', 'report_pie_chart', 0),
+            ('statistics', 'report_bar_chart', 1),
+            ('line_chart', 'report_line_chart', 2),
+            ('statistics', 'report_horizontal_bar', 3),
+            ('area_chart', 'report_area_chart', 4),
+            ('donut_chart', 'report_donut_chart', 5),
         ]
         
         # Styled dropdown for chart types
@@ -456,8 +484,12 @@ class ChartDesigner(QWidget):
         self.chart_types.setMinimumHeight(36)
         
         # Populate dropdown with icons
-        for icon, tr_key, idx in self.chart_types_data:
-            self.chart_types.addItem(f"{icon}  {self.translator.tr(tr_key)}", idx)
+        for icon_name, tr_key, idx in self.chart_types_data:
+            self.chart_types.addItem(
+                get_icon(icon_name, 18),
+                self.translator.tr(tr_key),
+                idx
+            )
         
         self.chart_types.setStyleSheet(AppStyles.get_component_style('report_chart_combobox'))
         
@@ -593,7 +625,9 @@ class ChartDesigner(QWidget):
         config_layout.addWidget(limit_container)
         
         # Generate button - Prominent styling
-        self.btn_generate = QPushButton("🔄 " + self.translator.tr('report_generate_chart'))
+        self.btn_generate = QPushButton(self.translator.tr('report_generate_chart'))
+        self.btn_generate.setIcon(get_icon('refresh', 18))
+        self.btn_generate.setIconSize(QSize(18, 18))
         self.btn_generate.setMinimumHeight(45)
         self.btn_generate.setCursor(Qt.PointingHandCursor)
         self.btn_generate.setStyleSheet(AppStyles.get_component_style('report_generate_button'))
@@ -1023,8 +1057,35 @@ class ChartDesigner(QWidget):
 
 
 class QueryBuilder(QWidget):
-    """SQL Query Builder Widget with Raw SQL and Visual Builder"""
-    
+    """SQL Query Builder Widget with Raw SQL and Visual Builder."""
+
+    # The visual builder only supports these application-owned tables and
+    # columns. Keeping this allowlist independent from combo-box text prevents
+    # a tampered widget state or a hostile database schema from becoming an SQL
+    # identifier injection.
+    VISUAL_TABLE_COLUMNS = {
+        'sources': {
+            'id', 'name', 'type', 'link_sources', 'importance', 'country',
+            'city', 'description', 'accounts', 'note', 'ownership',
+            'date_entry', 'date_creation', 'date_modified',
+        },
+        'contents': {
+            'id', 'title', 'content_data', 'attachments', 'note', 'importance',
+            'date_content', 'date_creation', 'date_modified', 'sources_id',
+        },
+        'content_analysis': {
+            'id', 'content_id', 'list_names_people', 'list_names_places',
+            'list_coordinates', 'classification', 'list_sides',
+            'date_analysis', 'date_creation', 'date_modified',
+        },
+    }
+    VISUAL_TABLES = frozenset(VISUAL_TABLE_COLUMNS)
+    VISUAL_FIELDS = frozenset(
+        f'{table}.{column}'
+        for table, columns in VISUAL_TABLE_COLUMNS.items()
+        for column in columns
+    )
+
     query_executed = pyqtSignal(list, list)  # data, columns
     
     def __init__(self, parent, translator):
@@ -1032,6 +1093,7 @@ class QueryBuilder(QWidget):
         self.translator = translator
         self.is_rtl = translator.current_language == 'ar'
         self.db_path = DatabaseConfig.get_db_path()
+        self.query_params = []
         self.setup_ui()
     
     def setup_ui(self):
@@ -1109,7 +1171,9 @@ class QueryBuilder(QWidget):
         btn_layout.setSpacing(AppStyles.get_spacing(2))  # 16px - 8px grid (rounding 10px to 16px)
         btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
         
-        self.btn_execute = QPushButton("▶  " + self.translator.tr('report_execute'))
+        self.btn_execute = QPushButton(self.translator.tr('report_execute'))
+        self.btn_execute.setIcon(get_icon('play', 18))
+        self.btn_execute.setIconSize(QSize(18, 18))
         self.btn_execute.setStyleSheet(AppStyles.get_component_style('report_execute_button'))
         self.btn_execute.clicked.connect(self.execute_query)
         
@@ -1344,11 +1408,15 @@ class QueryBuilder(QWidget):
         filter_toolbar = QHBoxLayout()
         filter_toolbar.setSpacing(8)
         
-        self.btn_add_filter = QPushButton("+ " + self.translator.tr('report_add_filter'))
+        self.btn_add_filter = QPushButton(self.translator.tr('report_add_filter'))
+        self.btn_add_filter.setIcon(get_icon('add', 16))
+        self.btn_add_filter.setIconSize(QSize(16, 16))
         self.btn_add_filter.setStyleSheet(AppStyles.get_component_style('report_add_filter_button'))
         self.btn_add_filter.clicked.connect(self.add_filter_row)
         
-        self.btn_add_filter_group = QPushButton("+ " + self.translator.tr('report_add_group'))
+        self.btn_add_filter_group = QPushButton(self.translator.tr('report_add_group'))
+        self.btn_add_filter_group.setIcon(get_icon('add', 16))
+        self.btn_add_filter_group.setIconSize(QSize(16, 16))
         self.btn_add_filter_group.setStyleSheet(AppStyles.get_component_style('report_add_group_btn'))
         self.btn_add_filter_group.clicked.connect(self.add_filter_group)
         
@@ -1573,9 +1641,14 @@ class QueryBuilder(QWidget):
             
             self.available_fields = []
             for table in selected_tables:
+                if table not in self.VISUAL_TABLES:
+                    continue
                 cursor.execute(f"PRAGMA table_info({table})")
                 columns = cursor.fetchall()
+                allowed_columns = self.VISUAL_TABLE_COLUMNS[table]
                 for col in columns:
+                    if col[1] not in allowed_columns:
+                        continue
                     field_name = f"{table}.{col[1]}"
                     self.available_fields.append(field_name)
                     item = QListWidgetItem(field_name)
@@ -1669,7 +1742,11 @@ class QueryBuilder(QWidget):
         filter_layout.addWidget(logic_combo)
         
         # Remove button
-        btn_remove = QPushButton("×")
+        btn_remove = QPushButton()
+        btn_remove.setIcon(get_icon('close', 16))
+        btn_remove.setIconSize(QSize(16, 16))
+        btn_remove.setToolTip(self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Remove filter')
+        btn_remove.setAccessibleName(self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Remove filter')
         btn_remove.setFixedSize(26, 26)
         btn_remove.setStyleSheet(AppStyles.get_component_style('report_remove_btn'))
         btn_remove.clicked.connect(lambda: self.remove_filter_row(filter_widget))
@@ -1726,13 +1803,19 @@ class QueryBuilder(QWidget):
         group_logic.addItems(['AND', 'OR'])
         header_layout.addWidget(group_logic)
         
-        btn_add_to_group = QPushButton("+ " + self.translator.tr('report_add_filter'))
+        btn_add_to_group = QPushButton(self.translator.tr('report_add_filter'))
+        btn_add_to_group.setIcon(get_icon('add', 16))
+        btn_add_to_group.setIconSize(QSize(16, 16))
         btn_add_to_group.clicked.connect(lambda: self.add_filter_row(group_frame))
         header_layout.addWidget(btn_add_to_group)
         
         header_layout.addStretch()
         
-        btn_remove_group = QPushButton("×")
+        btn_remove_group = QPushButton()
+        btn_remove_group.setIcon(get_icon('close', 16))
+        btn_remove_group.setIconSize(QSize(16, 16))
+        btn_remove_group.setToolTip(self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Remove filter group')
+        btn_remove_group.setAccessibleName(self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Remove filter group')
         btn_remove_group.setFixedSize(25, 25)
         btn_remove_group.setStyleSheet(AppStyles.get_component_style('report_small_remove_btn'))
         btn_remove_group.clicked.connect(lambda: self.remove_filter_group(group_frame))
@@ -1847,56 +1930,70 @@ class QueryBuilder(QWidget):
             filter_data['op_combo'].setCurrentText('>=')
             filter_data['value_widget'].setText('0.7')
     
-    def get_filter_clauses(self) -> List[str]:
-        """Get SQL WHERE clauses from current filters"""
+    def get_filter_clauses(self) -> List[Dict[str, Any]]:
+        """Build visual filters with parameterized values.
+
+        Field names and operators come from whitelisted combo-box values;
+        user-entered values are always bound parameters rather than interpolated
+        into SQL.
+        """
         clauses = []
-        
+        allowed_fields = set(getattr(self, 'available_fields', [])).intersection(
+            self.VISUAL_FIELDS
+        )
+        allowed_operators = {
+            '=', '!=', '>', '<', '>=', '<=', 'LIKE', 'NOT LIKE',
+            'IS NULL', 'IS NOT NULL', 'BETWEEN', 'IN', 'NOT IN',
+            'CONTAINS', 'STARTS WITH', 'ENDS WITH',
+        }
+        allowed_logic = {'AND', 'OR'}
+
         for filter_data in self.filter_rows:
             field = filter_data['field_combo'].currentText()
-            operator = filter_data['op_combo'].currentText()
+            operator = filter_data['op_combo'].currentText().upper()
             value = filter_data['value_widget'].text().strip()
             value2 = filter_data['value2_widget'].text().strip()
-            
-            if not field:
+
+            if not field or field not in allowed_fields or operator not in allowed_operators:
                 continue
-            
-            clause = ""
-            
-            if operator in ['IS NULL', 'IS NOT NULL']:
+
+            clause = ''
+            params = []
+            if operator in {'IS NULL', 'IS NOT NULL'}:
                 clause = f"{field} {operator}"
             elif operator == 'BETWEEN' and value and value2:
-                clause = f"{field} BETWEEN '{value}' AND '{value2}'"
-            elif operator == 'IN' and value:
-                # Parse comma-separated values
-                values = [v.strip() for v in value.split(',')]
-                values_str = ', '.join([f"'{v}'" for v in values])
-                clause = f"{field} IN ({values_str})"
-            elif operator == 'NOT IN' and value:
-                values = [v.strip() for v in value.split(',')]
-                values_str = ', '.join([f"'{v}'" for v in values])
-                clause = f"{field} NOT IN ({values_str})"
+                clause = f"{field} BETWEEN ? AND ?"
+                params = [value, value2]
+            elif operator in {'IN', 'NOT IN'} and value:
+                values = [item.strip() for item in value.split(',') if item.strip()]
+                if values:
+                    placeholders = ', '.join('?' for _ in values)
+                    clause = f"{field} {operator} ({placeholders})"
+                    params = values
             elif operator == 'CONTAINS' and value:
-                clause = f"{field} LIKE '%{value}%'"
+                clause = f"{field} LIKE ?"
+                params = [f'%{value}%']
             elif operator == 'STARTS WITH' and value:
-                clause = f"{field} LIKE '{value}%'"
+                clause = f"{field} LIKE ?"
+                params = [f'{value}%']
             elif operator == 'ENDS WITH' and value:
-                clause = f"{field} LIKE '%{value}'"
-            elif operator in ['LIKE', 'NOT LIKE'] and value:
-                clause = f"{field} {operator} '%{value}%'"
+                clause = f"{field} LIKE ?"
+                params = [f'%{value}']
+            elif operator in {'LIKE', 'NOT LIKE'} and value:
+                clause = f"{field} {operator} ?"
+                params = [f'%{value}%']
             elif value:
-                # Check if numeric
-                try:
-                    float(value)
-                    clause = f"{field} {operator} {value}"
-                except ValueError:
-                    clause = f"{field} {operator} '{value}'"
-            
+                clause = f"{field} {operator} ?"
+                params = [value]
+
             if clause:
+                logic = filter_data['logic_combo'].currentText().upper()
                 clauses.append({
                     'clause': clause,
-                    'logic': filter_data['logic_combo'].currentText()
+                    'params': params,
+                    'logic': logic if logic in allowed_logic else 'AND',
                 })
-        
+
         return clauses
     
     def select_all_fields(self, select: bool):
@@ -1911,15 +2008,25 @@ class QueryBuilder(QWidget):
     
     def build_visual_query(self) -> str:
         """Build SQL query from visual builder selections"""
-        selected_tables = [name for name, check in self.table_checks.items() if check.isChecked()]
+        selected_tables = [
+            name for name, check in self.table_checks.items()
+            if check.isChecked() and name in self.VISUAL_TABLES
+        ]
         
         if not selected_tables:
+            self.query_params = []
             return ""
         
-        # Get selected fields
-        selected_fields = [self.fields_list.item(i).text() 
-                         for i in range(self.fields_list.count()) 
-                         if self.fields_list.item(i).isSelected()]
+        # Field names are database metadata, not free-form SQL. Keep a second
+        # allowlist check here even though the list widget is not editable.
+        available_fields = set(getattr(self, 'available_fields', []))
+        allowed_fields = available_fields.intersection(self.VISUAL_FIELDS)
+        selected_fields = [
+            self.fields_list.item(i).text()
+            for i in range(self.fields_list.count())
+            if self.fields_list.item(i).isSelected()
+            and self.fields_list.item(i).text() in allowed_fields
+        ]
         
         if not selected_fields:
             selected_fields = ['*']
@@ -1943,47 +2050,53 @@ class QueryBuilder(QWidget):
         
         query = f"SELECT {fields_str} FROM {from_clause}"
         
-        # Build WHERE clause from advanced filters
+        # Build WHERE clause from advanced filters. Values are bound below.
         filter_clauses = self.get_filter_clauses()
+        self.query_params = []
         
         if filter_clauses:
-            global_logic = self.global_logic_combo.currentText()
-            where_parts = []
-            
-            for i, fc in enumerate(filter_clauses):
-                where_parts.append(fc['clause'])
-                
-            # Combine with global logic or individual logic
+            where_parts = [fc['clause'] for fc in filter_clauses]
+            self.query_params = [
+                param for fc in filter_clauses for param in fc.get('params', [])
+            ]
             if len(where_parts) == 1:
                 where_str = where_parts[0]
             else:
-                # Use individual logic operators
                 where_str = where_parts[0]
                 for i, part in enumerate(where_parts[1:]):
-                    logic = filter_clauses[i]['logic']  # Logic from previous filter
+                    logic = filter_clauses[i]['logic']
                     where_str += f" {logic} {part}"
-            
             query += f" WHERE {where_str}"
         
-        # Add ORDER BY
-        if self.order_field.currentText():
-            direction = self.order_direction.currentText()
-            query += f" ORDER BY {self.order_field.currentText()} {direction}"
+        # Field/operator values originate from fixed database metadata and
+        # combo-box values; validate them again before composing identifiers.
+        selected_order_field = self.order_field.currentText()
+        allowed_order_fields = set(getattr(self, 'available_fields', [])).intersection(
+            self.VISUAL_FIELDS
+        )
+        if selected_order_field and selected_order_field in allowed_order_fields:
+            direction = self.order_direction.currentText().upper()
+            if direction not in {'ASC', 'DESC'}:
+                direction = 'ASC'
+            query += f" ORDER BY {selected_order_field} {direction}"
         
-        # Add LIMIT
         if self.limit_check.isChecked():
-            query += f" LIMIT {self.limit_spin.value()}"
+            # QSpinBox supplies a bounded integer, so this identifier-free
+            # clause remains safe and keeps saved visual queries executable
+            # when they are loaded in raw SQL mode.
+            query += f" LIMIT {int(self.limit_spin.value())}"
         
         return query
     
     def get_query(self) -> str:
-        """Get the current query (SQL or visual)"""
+        """Get the current query (SQL or visual)."""
         if self.mode_group.checkedId() == 0:  # SQL mode
+            self.query_params = []
             return self.sql_editor.toPlainText().strip()
-        else:  # Visual mode
-            query = self.build_visual_query()
-            self.generated_sql.setPlainText(query)
-            return query
+
+        query = self.build_visual_query()
+        self.generated_sql.setPlainText(query)
+        return query
     
     def set_query(self, query: str):
         """Set query in SQL mode"""
@@ -1994,6 +2107,7 @@ class QueryBuilder(QWidget):
     def clear_query(self):
         """Clear the query"""
         self.sql_editor.clear()
+        self.query_params = []
         # Reset visual builder
         for check in self.table_checks.values():
             check.setChecked(True)
@@ -2010,33 +2124,35 @@ class QueryBuilder(QWidget):
                               self.translator.tr('report_empty_query'))
             return
         
-        # Security check - only SELECT allowed
+        # Security check - only a single SELECT statement is allowed. Visual
+        # queries use bound parameters; raw SQL mode remains intentionally
+        # available for advanced users but cannot execute a statement batch.
         query_upper = query.upper().strip()
-        if not query_upper.startswith('SELECT'):
+        if not query_upper.startswith('SELECT') or ';' in query.rstrip().rstrip(';'):
             QMessageBox.warning(self, self.translator.tr('msg_warning'),
                               self.translator.tr('report_only_select'))
             return
         
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute(query)
-            
+            cursor.execute(query, tuple(getattr(self, 'query_params', [])))
+
             rows = cursor.fetchall()
-            
             if rows:
                 columns = list(rows[0].keys())
                 data = [dict(row) for row in rows]
                 self.query_executed.emit(data, columns)
             else:
                 self.query_executed.emit([], [])
-            
-            conn.close()
-            
         except Exception as e:
             QMessageBox.critical(self, self.translator.tr('msg_error'),
                                f"{self.translator.tr('report_query_error')}:\n{str(e)}")
+        finally:
+            if conn is not None:
+                conn.close()
 
 
 class ReportsTab(QWidget):
@@ -2163,6 +2279,24 @@ class ReportsTab(QWidget):
         # Update status
         if hasattr(self, 'status_label'):
             self.status_label.setText(self.translator.tr('msg_ready'))
+
+    def set_data(self, data: List[Dict], columns: Optional[List[str]] = None,
+                 title: str = None):
+        """Load externally supplied rows into the report workspace.
+
+        The All Data tab uses this to hand its filtered selection to Reports.
+        Keeping the operation here avoids faking a SQL query and makes the
+        report preview, result table, chart designer, and export actions all
+        operate on the same data.
+        """
+        rows = list(data or [])
+        if columns is None:
+            columns = list(rows[0].keys()) if rows else []
+        self.on_query_executed(rows, list(columns))
+        if title:
+            self.report_title_edit.setText(title)
+        self.right_panel_tabs.setCurrentIndex(1)
+        self.update_report_preview()
     
     def create_toolbar(self, parent_layout):
         """Create main toolbar"""
@@ -2503,7 +2637,7 @@ class ReportsTab(QWidget):
             </style>
         </head>
         <body>
-            <h1>📊 {title}</h1>
+            <h1>{escape(str(title))}</h1>
             <p class="info">{self.translator.tr('report_generated')}: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         """
         
@@ -2532,14 +2666,14 @@ class ReportsTab(QWidget):
             html += f"<h3>{self.translator.tr('report_data_table')}</h3>"
             html += "<table><tr>"
             for col in self.current_columns:
-                html += f"<th>{col}</th>"
+                html += f"<th>{escape(str(col))}</th>"
             html += "</tr>"
             
             for row in self.current_data[:50]:  # Limit to 50 rows in preview
                 html += "<tr>"
                 for col in self.current_columns:
                     value = str(row.get(col, ''))[:100]  # Truncate long values
-                    html += f"<td>{value}</td>"
+                    html += f"<td>{escape(value)}</td>"
                 html += "</tr>"
             
             if len(self.current_data) > 50:
@@ -2591,6 +2725,7 @@ class ReportsTab(QWidget):
                 'name': name,
                 'description': dialog.get_report_description(),
                 'query': self.query_builder.get_query(),
+                'query_params': list(getattr(self.query_builder, 'query_params', [])),
                 'title': self.report_title_edit.text(),
                 'chart_config': self.chart_designer.get_config(),
                 'orientation': self.orientation_combo.currentIndex(),
@@ -2599,7 +2734,11 @@ class ReportsTab(QWidget):
                 'created': datetime.now().isoformat(),
             }
             
-            filename = f"{name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
+            safe_name = ''.join(
+                char if (char.isalnum() or char in {' ', '-', '_'}) else '_'
+                for char in name
+            ).strip().replace(' ', '_')[:120] or 'report'
+            filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
             filepath = os.path.join(self.reports_dir, filename)
             
             try:
@@ -2621,8 +2760,13 @@ class ReportsTab(QWidget):
                 with open(dialog.selected_report, 'r', encoding='utf-8') as f:
                     report_data = json.load(f)
                 
-                # Apply report settings
+                # Apply report settings. Visual-builder placeholders are kept
+                # as data so loading a saved report never reintroduces value
+                # interpolation into SQL.
                 self.query_builder.set_query(report_data.get('query', ''))
+                saved_params = report_data.get('query_params', [])
+                if isinstance(saved_params, list) and len(saved_params) <= 1000:
+                    self.query_builder.query_params = saved_params
                 self.report_title_edit.setText(report_data.get('title', ''))
                 self.orientation_combo.setCurrentIndex(report_data.get('orientation', 0))
                 
@@ -2794,6 +2938,7 @@ class ReportsTab(QWidget):
         print_settings = get_print_settings() if include_header else None
         
         try:
+            success = False
             if export_format == ExportPreviewDialog.FORMAT_EXCEL:
                 from openpyxl import Workbook
                 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
@@ -2904,6 +3049,7 @@ class ReportsTab(QWidget):
                         ws.column_dimensions[get_column_letter(col_idx)].width = max_length + 2
                 
                 wb.save(filepath)
+                success = True
             
             elif export_format == ExportPreviewDialog.FORMAT_CSV:
                 import csv
@@ -2943,10 +3089,11 @@ class ReportsTab(QWidget):
                             value = row_data.get(col_key)
                             row.append('-' if value is None else value)
                         writer.writerow(row)
+                success = True
             
             elif export_format == ExportPreviewDialog.FORMAT_WORD:
                 from utils.word_export import export_to_word
-                export_to_word(
+                success = export_to_word(
                     data,
                     selected_columns,
                     filepath,
@@ -2994,6 +3141,12 @@ class ReportsTab(QWidget):
                 
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, settings_obj)
+                success = os.path.isfile(filepath) and os.path.getsize(filepath) > 0
+            else:
+                raise ValueError(f"Unsupported export format: {export_format}")
+
+            if not success or not os.path.isfile(filepath) or os.path.getsize(filepath) == 0:
+                raise IOError(f"Export did not create a valid output file: {filepath}")
             
             # Show success message
             QMessageBox.information(
@@ -3142,11 +3295,13 @@ class ReportsTab(QWidget):
         if hasattr(qb, 'btn_deselect_all'):
             qb.btn_deselect_all.setText(self.translator.tr('btn_deselect_all'))
         if hasattr(qb, 'btn_add_filter'):
-            qb.btn_add_filter.setText("+ " + self.translator.tr('report_add_filter'))
+            qb.btn_add_filter.setText(self.translator.tr('report_add_filter'))
+            qb.btn_add_filter.setIcon(get_icon('add', 16))
         if hasattr(qb, 'btn_clear_filters'):
             qb.btn_clear_filters.setText(self.translator.tr('btn_clear'))
         if hasattr(qb, 'btn_add_filter_group'):
-            qb.btn_add_filter_group.setText("+ " + self.translator.tr('report_add_group'))
+            qb.btn_add_filter_group.setText(self.translator.tr('report_add_group'))
+            qb.btn_add_filter_group.setIcon(get_icon('add', 16))
         
         # Quick filter buttons
         if hasattr(qb, 'btn_preset_today'):
@@ -3208,27 +3363,27 @@ class ReportsTab(QWidget):
         cd = self.chart_designer
         
         # Collapsible section headers
-        if hasattr(cd, 'type_header') and hasattr(cd, 'type_content'):
-            is_expanded = cd.type_content.isVisible()
-            cd.type_header.setText(f"{'▼' if is_expanded else '▶'} {self.translator.tr('report_chart_type')}")
-        if hasattr(cd, 'title_header') and hasattr(cd, 'title_content'):
-            is_expanded = cd.title_content.isVisible()
-            cd.title_header.setText(f"{'▼' if is_expanded else '▶'} {self.translator.tr('lbl_title')}")
-        if hasattr(cd, 'data_header') and hasattr(cd, 'data_content'):
-            is_expanded = cd.data_content.isVisible()
-            cd.data_header.setText(f"{'▼' if is_expanded else '▶'} {self.translator.tr('report_data_config')}")
-        if hasattr(cd, 'style_header') and hasattr(cd, 'style_content'):
-            is_expanded = cd.style_content.isVisible()
-            cd.style_header.setText(f"{'▼' if is_expanded else '▶'} {self.translator.tr('report_chart_style')}")
-        if hasattr(cd, 'limit_header') and hasattr(cd, 'limit_content'):
-            is_expanded = cd.limit_content.isVisible()
-            cd.limit_header.setText(f"{'▼' if is_expanded else '▶'} {self.translator.tr('report_limit')}")
+        for header_attr, content_attr, title_key in (
+            ('type_header', 'type_content', 'report_chart_type'),
+            ('title_header', 'title_content', 'lbl_title'),
+            ('data_header', 'data_content', 'report_data_config'),
+            ('style_header', 'style_content', 'report_chart_style'),
+            ('limit_header', 'limit_content', 'report_limit'),
+        ):
+            if hasattr(cd, header_attr) and hasattr(cd, content_attr):
+                header = getattr(cd, header_attr)
+                expanded = getattr(cd, content_attr).isVisible()
+                header.setText(self.translator.tr(title_key))
+                header.setIcon(get_icon('chevron_down' if expanded else 'chevron_right', 18))
+                header.setIconSize(QSize(18, 18))
         
         # View mode buttons
         if hasattr(cd, 'btn_chart_view'):
-            cd.btn_chart_view.setText("📊 " + self.translator.tr('report_chart_view'))
+            cd.btn_chart_view.setText(self.translator.tr('report_chart_view'))
+            cd.btn_chart_view.setIcon(get_icon('chart', 18))
         if hasattr(cd, 'btn_table_view'):
-            cd.btn_table_view.setText("📋 " + self.translator.tr('report_table_view'))
+            cd.btn_table_view.setText(self.translator.tr('report_table_view'))
+            cd.btn_table_view.setIcon(get_icon('table', 18))
         
         # Chart type label
         if hasattr(cd, 'chart_type_label'):
@@ -3240,14 +3395,18 @@ class ReportsTab(QWidget):
             cd.chart_types.blockSignals(True)
             cd.chart_types.clear()
             
-            # Repopulate with translated items
-            icons = ['🥧', '📊', '📈', '📉', '📐', '🍩']
+            # Repopulate with translated labels and graphical icons.
+            icon_names = ['pie_chart', 'statistics', 'line_chart', 'statistics', 'area_chart', 'donut_chart']
             chart_types_tr = [
                 'report_pie_chart', 'report_bar_chart', 'report_line_chart',
                 'report_horizontal_bar', 'report_area_chart', 'report_donut_chart'
             ]
             for i, tr_key in enumerate(chart_types_tr):
-                cd.chart_types.addItem(f"{icons[i]}  {self.translator.tr(tr_key)}", i)
+                cd.chart_types.addItem(
+                    get_icon(icon_names[i], 18),
+                    self.translator.tr(tr_key),
+                    i
+                )
             
             cd.chart_types.setCurrentIndex(current_idx)
             cd.chart_types.blockSignals(False)

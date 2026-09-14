@@ -542,6 +542,7 @@ class ContentAnalysisDialog(QDialog):
         self.translator = translator
         self.analysis_data = analysis_data
         self.result = None
+        self.selected_content_id = None
         self.setWindowTitle(title)
         # Apply responsive size
         from styles.styles import AppStyles
@@ -683,10 +684,14 @@ class ContentAnalysisDialog(QDialog):
         layout.addLayout(btn_layout)
     
     def on_content_selected(self, content_id):
-        """Handle content selection change"""
-        # This method is called when a content is selected from the combo box
-        # Currently used for future attachment organization features
-        pass
+        """Track the content currently associated with the analysis form."""
+        self.selected_content_id = content_id
+        # Keeping this state explicit makes the selection available to future
+        # attachment/link actions without performing an implicit database write.
+        self.content_combo.setToolTip(
+            self.translator.tr('lbl_content_id') + f": {content_id}"
+            if content_id else self.translator.tr('lbl_content_id')
+        )
     
     def refresh_content_combo(self):
         """Refresh content combo box"""

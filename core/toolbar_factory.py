@@ -286,8 +286,8 @@ class ToolbarFactory:
         # Add button
         if config.show_add:
             btn_add = QPushButton()
-            setup_icon_button(btn_add, 'btn_add', self.translator.tr('btn_add'))
             btn_add.setStyleSheet(AppStyles.get_button_style('success'))
+            setup_icon_button(btn_add, 'btn_add', self.translator.tr('btn_add'))
             if 'add' in callbacks:
                 btn_add.clicked.connect(callbacks['add'])
             layout.addWidget(btn_add)
@@ -305,9 +305,9 @@ class ToolbarFactory:
         # Delete button
         if config.show_delete:
             btn_delete = QPushButton()
-            setup_icon_button(btn_delete, 'btn_delete', self.translator.tr('btn_delete'))
             btn_delete.setProperty('class', 'danger')
             btn_delete.setStyleSheet(AppStyles.get_button_style('danger'))
+            setup_icon_button(btn_delete, 'btn_delete', self.translator.tr('btn_delete'))
             if 'delete' in callbacks:
                 btn_delete.clicked.connect(callbacks['delete'])
             layout.addWidget(btn_delete)
@@ -373,8 +373,8 @@ class ToolbarFactory:
         # Unified export button (with preview dialog)
         if config.show_export_unified:
             btn_export = QPushButton()
-            setup_icon_button(btn_export, 'btn_export', self.translator.tr('btn_export'))
             btn_export.setStyleSheet(AppStyles.get_button_style('purple'))
+            setup_icon_button(btn_export, 'btn_export', self.translator.tr('btn_export'))
             if 'export_unified' in callbacks:
                 btn_export.clicked.connect(callbacks['export_unified'])
             layout.addWidget(btn_export)

@@ -182,7 +182,7 @@ def generate_comprehensive_timeline_data():
             except Exception as e:
                 errors.append(f"Source {sources_created + 1} ({period['name']}): {str(e)}")
         
-        print(f"  ✓ Created {len(period_source_ids)} sources")
+        print(f"  OK: Created {len(period_source_ids)} sources")
         
         # Generate contents for sources in this period
         print(f"  Generating contents (avg {period['contents_per']} per source)...")
@@ -204,7 +204,7 @@ def generate_comprehensive_timeline_data():
                 except Exception as e:
                     errors.append(f"Content {contents_created + 1} ({period['name']}): {str(e)}")
         
-        print(f"  ✓ Created {len(period_content_ids)} contents")
+        print(f"  OK: Created {len(period_content_ids)} contents")
         
         # Generate analyses for contents in this period
         print(f"  Generating analyses...")
@@ -234,26 +234,26 @@ def generate_comprehensive_timeline_data():
             except Exception as e:
                 errors.append(f"Analysis {analyses_created + 1} ({period['name']}): {str(e)}")
         
-        print(f"  ✓ Created {len(contents_to_analyze)} analyses")
+        print(f"  OK: Created {len(contents_to_analyze)} analyses")
     
     # Summary
     print("\n" + "=" * 70)
     print("GENERATION COMPLETE!")
     print("=" * 70)
-    print(f"\n📊 Statistics:")
-    print(f"  ✓ Sources created:  {sources_created:,}")
-    print(f"  ✓ Contents created: {contents_created:,}")
-    print(f"  ✓ Analyses created:  {analyses_created:,}")
-    print(f"  ✓ Total records:    {sources_created + contents_created + analyses_created:,}")
+    print(f"\nStatistics:")
+    print(f"  OK: Sources created:  {sources_created:,}")
+    print(f"  OK: Contents created: {contents_created:,}")
+    print(f"  OK: Analyses created:  {analyses_created:,}")
+    print(f"  OK: Total records:    {sources_created + contents_created + analyses_created:,}")
     
     if errors:
-        print(f"\n⚠️  Errors ({len(errors)}):")
+        print(f"\nErrors ({len(errors)}):")
         for err in errors[:10]:
             print(f"  - {err}")
         if len(errors) > 10:
             print(f"  ... and {len(errors) - 10} more errors")
     else:
-        print("\n✅ No errors!")
+        print("\nNo errors!")
     
     print("\n" + "=" * 70)
     print("Timeline is now ready for testing!")
@@ -267,8 +267,8 @@ if __name__ == '__main__':
     try:
         generate_comprehensive_timeline_data()
     except KeyboardInterrupt:
-        print("\n\n⚠️  Generation interrupted by user.")
+        print("\n\nGeneration interrupted by user.")
     except Exception as e:
-        print(f"\n\n❌ ERROR: {e}")
+        print(f"\n\nERROR: {e}")
         import traceback
         traceback.print_exc()

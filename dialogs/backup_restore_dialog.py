@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem, QLabel, QMessageBox, QFileDialog, QHeaderView,
     QGroupBox, QProgressBar, QCheckBox, QDialogButtonBox, QWidget
 )
-from icons.icon_manager import setup_icon_button
+from icons.icon_manager import setup_icon_button, get_icon
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from typing import Optional
 from pathlib import Path
@@ -370,9 +370,13 @@ class BackupRestoreDialog(QDialog):
                 date_item = QTableWidgetItem(date_str)
                 self.backup_table.setItem(row, 2, date_item)
                 
-                # Encrypted indicator
-                encrypted = "🔒" if backup.get('is_encrypted', False) else ""
-                encrypted_item = QTableWidgetItem(encrypted)
+                # Encrypted indicator: use an actual icon rather than a
+                # Unicode lock glyph, with an accessible tooltip.
+                encrypted_item = QTableWidgetItem()
+                if backup.get('is_encrypted', False):
+                    encrypted_item.setIcon(get_icon('lock', 18))
+                    encrypted_item.setToolTip(self.translator.tr('backup_preview_encrypted'))
+                    encrypted_item.setData(Qt.AccessibleTextRole, self.translator.tr('backup_preview_encrypted'))
                 self.backup_table.setItem(row, 3, encrypted_item)
             
             self.status_label.setText(f"{len(backups)} {self.translator.tr('msg_backups_found').lower()}")

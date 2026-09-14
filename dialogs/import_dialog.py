@@ -24,6 +24,7 @@ from styles.styles import AppStyles
 from utils.logger import get_logger
 from utils.error_handler import ErrorHandler, AppError, ErrorSeverity, ErrorCategory
 from db.db_manager import DatabaseManager
+from icons.icon_manager import get_icon
 
 logger = get_logger(__name__)
 
@@ -127,6 +128,8 @@ class ImportWorker(QThread):
                     DatabaseManager.add_content(mapped_row)
                 elif self.table_name == 'content_analysis':
                     DatabaseManager.add_content_analysis(mapped_row)
+                else:
+                    raise ValueError(f"Unsupported import table: {self.table_name}")
                 
                 success_count += 1
                 self.row_imported.emit(i, True, "")
@@ -198,7 +201,6 @@ class ImportPreviewDialog(QDialog):
         
         file_btn_layout = QHBoxLayout()
         file_btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
-        from styles.styles import AppStyles
         file_btn_layout.setSpacing(AppStyles.get_spacing(2))  # 16px - 8px grid spacing
         self.file_path_edit = QLineEdit()
         self.file_path_edit.setReadOnly(True)
@@ -563,9 +565,9 @@ class ImportPreviewDialog(QDialog):
         # Update summary
         self.validation_summary.setText(f"""
             <b>{self._tr('import_validation_summary', 'Validation Summary')}:</b><br>
-            ✅ {self._tr('import_valid', 'Valid')}: {valid_count}<br>
-            ⚠️ {self._tr('import_warnings', 'Warnings')}: {warning_count}<br>
-            ❌ {self._tr('import_errors', 'Errors')}: {error_count}
+            {self._tr('import_valid', 'Valid')}: {valid_count}<br>
+            {self._tr('import_warnings', 'Warnings')}: {warning_count}<br>
+            {self._tr('import_errors', 'Errors')}: {error_count}
         """)
         
         # Update preview table
@@ -600,16 +602,20 @@ class ImportPreviewDialog(QDialog):
             status_item = QTableWidgetItem()
             
             if status == ValidationStatus.VALID:
-                status_item.setText('✅')
+                status_item.setIcon(get_icon('validate', 18))
                 status_item.setBackground(QColor('#d4edda'))
+                status_item.setToolTip(self._tr('import_valid', 'Valid'))
+                status_item.setData(Qt.AccessibleTextRole, self._tr('import_valid', 'Valid'))
             elif status == ValidationStatus.WARNING:
-                status_item.setText('⚠️')
+                status_item.setIcon(get_icon('warning', 18))
                 status_item.setBackground(QColor('#fff3cd'))
                 status_item.setToolTip('\n'.join(result['warnings']))
+                status_item.setData(Qt.AccessibleTextRole, self._tr('import_warnings', 'Warnings'))
             else:
-                status_item.setText('❌')
+                status_item.setIcon(get_icon('error', 18))
                 status_item.setBackground(QColor('#f8d7da'))
                 status_item.setToolTip('\n'.join(result['errors']))
+                status_item.setData(Qt.AccessibleTextRole, self._tr('import_errors', 'Errors'))
             
             self.preview_table.setItem(i, 0, status_item)
             
@@ -713,9 +719,14 @@ class ImportPreviewDialog(QDialog):
     def _on_row_imported(self, row_index: int, success: bool, message: str):
         """Handle row import result"""
         if success:
-            self.import_log.append(f"✅ Row {row_index + 1}: Success")
+                self.import_log.append(
+                    f"{self._tr('import_valid', 'Valid')} - Row {row_index + 1}: "
+                    f"{self._tr('msg_success', 'Success')}"
+                )
         else:
-            self.import_log.append(f"❌ Row {row_index + 1}: {message}")
+                self.import_log.append(
+                    f"{self._tr('import_errors', 'Error')} - Row {row_index + 1}: {message}"
+                )
     
     def _on_import_completed(self, success_count: int, error_count: int, errors: List):
         """Handle import completion"""

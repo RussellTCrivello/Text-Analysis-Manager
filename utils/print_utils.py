@@ -5,6 +5,7 @@ Centralized header/footer system for consistent printing and exporting across th
 import os
 import base64
 import json
+from html import escape as html_escape
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from PyQt5.QtWidgets import (
@@ -941,7 +942,7 @@ class ExportColumnDialog(QDialog):
             remaining = max(0, 100 - total)
             auto_width = remaining / auto_count
             self.total_label.setText(
-                f"{self.translator.tr('print_total_width')}: {total}% + {auto_count} × {auto_width:.1f}% (auto) = ~100%"
+                f"{self.translator.tr('print_total_width')}: {total}% + {auto_count} x {auto_width:.1f}% (auto) = ~100%"
             )
             self.total_label.setStyleSheet(AppStyles.get_component_style('print_total_valid'))
         else:
@@ -1037,6 +1038,32 @@ def generate_print_html(data: List[Dict], columns: List[str],
     
     # Print date for footer
     print_date = datetime.now().strftime("%Y-%m-%d %H:%M") if settings.show_print_date else ""
+
+    # Escape all user/configuration supplied text before inserting it into
+    # generated HTML. This keeps special characters intact in print/PDF
+    # output and prevents markup from being interpreted as document content.
+    def _safe_text(value) -> str:
+        return html_escape(str(value)) if value else ''
+
+    safe_title = _safe_text(title or 'Report')
+    safe_header = [
+        _safe_text(value)
+        for value in (
+            settings.header_left_line1,
+            settings.header_left_line2,
+            settings.header_left_line3,
+            settings.header_right_extra,
+            settings.footer_left,
+            settings.footer_center,
+            settings.footer_right,
+        )
+    ]
+    (safe_header_left_1, safe_header_left_2, safe_header_left_3,
+     safe_header_extra, safe_footer_left, safe_footer_center,
+     safe_footer_right) = safe_header
+    safe_current_date = html_escape(str(current_date))
+    safe_print_date = html_escape(str(print_date))
+    safe_doc_number = html_escape(str(doc_number))
     
     # Get fonts directory path for embedded fonts
     fonts_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fonts')
@@ -1082,7 +1109,7 @@ def generate_print_html(data: List[Dict], columns: List[str],
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title or 'Report'}</title>
+    <title>{safe_title}</title>
     <style>
         {font_face_css}
         
@@ -1330,17 +1357,17 @@ def generate_print_html(data: List[Dict], columns: List[str],
     <!-- Professional Header -->
     <div class="header-container">
         <div class="header-section header-left">
-            {'<p class="header-line1">' + settings.header_left_line1 + '</p>' if settings.header_left_line1 else ''}
-            {'<p class="header-line2">' + settings.header_left_line2 + '</p>' if settings.header_left_line2 else ''}
-            {'<p class="header-line3">' + settings.header_left_line3 + '</p>' if settings.header_left_line3 else ''}
+            {'<p class="header-line1">' + safe_header_left_1 + '</p>' if safe_header_left_1 else ''}
+            {'<p class="header-line2">' + safe_header_left_2 + '</p>' if safe_header_left_2 else ''}
+            {'<p class="header-line3">' + safe_header_left_3 + '</p>' if safe_header_left_3 else ''}
         </div>
         <div class="header-section header-center">
             {logo_html}
         </div>
         <div class="header-section header-right">
-            {'<p class="doc-number">#' + doc_number + '</p>' if doc_number else ''}
-            {'<p class="doc-date">' + current_date + '</p>' if current_date else ''}
-            {'<p class="doc-extra">' + settings.header_right_extra + '</p>' if settings.header_right_extra else ''}
+            {'<p class="doc-number">#' + safe_doc_number + '</p>' if safe_doc_number else ''}
+            {'<p class="doc-date">' + safe_current_date + '</p>' if safe_current_date else ''}
+            {'<p class="doc-extra">' + safe_header_extra + '</p>' if safe_header_extra else ''}
         </div>
     </div>
 '''
@@ -1355,7 +1382,7 @@ def generate_print_html(data: List[Dict], columns: List[str],
     
     for col in columns:
         width = normalized_widths.get(col, auto_width)
-        html += f'<th style="width: {width}%;">{col}</th>'
+        html += f'<th style="width: {width}%;">{html_escape(str(col))}</th>'
     
     html += '</tr></thead><tbody>'
     
@@ -1377,24 +1404,24 @@ def generate_print_html(data: List[Dict], columns: List[str],
     <div class="footer">
         <div class="footer-section footer-left">'''
     
-    if settings.footer_left:
-        html += settings.footer_left
+    if safe_footer_left:
+        html += safe_footer_left
     
     html += '''</div>
         <div class="footer-section footer-center">'''
     
     # Page numbers are drawn by print_document_with_page_numbers, not in HTML
-    if settings.footer_center:
-        html += settings.footer_center
+    if safe_footer_center:
+        html += safe_footer_center
     
     html += '''</div>
         <div class="footer-section footer-right">'''
     
     footer_right_parts = []
-    if settings.footer_right:
-        footer_right_parts.append(settings.footer_right)
-    if print_date:
-        footer_right_parts.append(print_date)
+    if safe_footer_right:
+        footer_right_parts.append(safe_footer_right)
+    if safe_print_date:
+        footer_right_parts.append(safe_print_date)
     
     html += ' | '.join(footer_right_parts) if footer_right_parts else ''
     
@@ -1659,6 +1686,19 @@ def generate_timeline_print_html(events: List[Dict], translator, density_mode: s
     doc_number = settings.generate_doc_number()
     current_date = settings.get_formatted_date() if settings.header_right_show_date else ""
     print_date = datetime.now().strftime('%Y-%m-%d %H:%M') if settings.show_print_date else ""
+    def _safe_text(value) -> str:
+        return html_escape(str(value)) if value else ''
+
+    safe_header_left_1 = _safe_text(settings.header_left_line1)
+    safe_header_left_2 = _safe_text(settings.header_left_line2)
+    safe_header_left_3 = _safe_text(settings.header_left_line3)
+    safe_header_extra = _safe_text(settings.header_right_extra)
+    safe_footer_left = _safe_text(settings.footer_left)
+    safe_footer_center = _safe_text(settings.footer_center)
+    safe_footer_right = _safe_text(settings.footer_right)
+    safe_current_date = _safe_text(current_date)
+    safe_print_date = _safe_text(print_date)
+    safe_doc_number = _safe_text(doc_number)
     
     # Logo HTML
     logo_html = ""
@@ -1865,17 +1905,17 @@ def generate_timeline_print_html(events: List[Dict], translator, density_mode: s
     <!-- Professional Header -->
     <div class="header-container">
         <div class="header-section header-left">
-            {'<p class="header-line1">' + settings.header_left_line1 + '</p>' if settings.header_left_line1 else ''}
-            {'<p class="header-line2">' + settings.header_left_line2 + '</p>' if settings.header_left_line2 else ''}
-            {'<p class="header-line3">' + settings.header_left_line3 + '</p>' if settings.header_left_line3 else ''}
+            {'<p class="header-line1">' + safe_header_left_1 + '</p>' if safe_header_left_1 else ''}
+            {'<p class="header-line2">' + safe_header_left_2 + '</p>' if safe_header_left_2 else ''}
+            {'<p class="header-line3">' + safe_header_left_3 + '</p>' if safe_header_left_3 else ''}
         </div>
         <div class="header-section header-center">
             {logo_html}
         </div>
         <div class="header-section header-right">
-            {'<p class="doc-number">#' + doc_number + '</p>' if doc_number else ''}
-            {'<p class="doc-date">' + current_date + '</p>' if current_date else ''}
-            {'<p class="doc-extra">' + settings.header_right_extra + '</p>' if settings.header_right_extra else ''}
+            {'<p class="doc-number">#' + safe_doc_number + '</p>' if safe_doc_number else ''}
+            {'<p class="doc-date">' + safe_current_date + '</p>' if safe_current_date else ''}
+            {'<p class="doc-extra">' + safe_header_extra + '</p>' if safe_header_extra else ''}
         </div>
     </div>
     
@@ -1945,15 +1985,15 @@ def generate_timeline_print_html(events: List[Dict], translator, density_mode: s
         if people or places or classification:
             html += '        <div class="event-meta">\n'
             if people:
-                html += f'            <span class="event-badge badge-people">👤 {format_value_for_html(str(people)[:50])}</span>\n'
+                html += f'            <span class="event-badge badge-people">People: {format_value_for_html(str(people)[:50])}</span>\n'
             if places:
-                html += f'            <span class="event-badge badge-places">📍 {format_value_for_html(str(places)[:50])}</span>\n'
+                html += f'            <span class="event-badge badge-places">Places: {format_value_for_html(str(places)[:50])}</span>\n'
             if classification:
-                html += f'            <span class="event-badge badge-classification">🏷️ {format_value_for_html(classification)}</span>\n'
+                html += f'            <span class="event-badge badge-classification">Classification: {format_value_for_html(classification)}</span>\n'
             html += '        </div>\n'
         
         if source:
-            html += f'        <div class="event-source">📰 {format_value_for_html(source)}</div>\n'
+            html += f'        <div class="event-source">Source: {format_value_for_html(source)}</div>\n'
         
         html += '    </div>\n'
     
@@ -1961,15 +2001,15 @@ def generate_timeline_print_html(events: List[Dict], translator, density_mode: s
     html += f'''
     <div class="footer">
         <div class="footer-section footer-left">
-            {settings.footer_left if settings.footer_left else ''}
+            {safe_footer_left if safe_footer_left else ''}
         </div>
         <div class="footer-section footer-center">
-            {settings.footer_center if settings.footer_center else ''}
+            {safe_footer_center if safe_footer_center else ''}
         </div>
         <div class="footer-section footer-right">
-            {settings.footer_right if settings.footer_right else ''}
-            {' | ' if settings.footer_right and print_date else ''}
-            {print_date if print_date else ''}
+            {safe_footer_right if safe_footer_right else ''}
+            {' | ' if safe_footer_right and safe_print_date else ''}
+            {safe_print_date if safe_print_date else ''}
         </div>
     </div>
 </body>

@@ -405,7 +405,7 @@ class PerformanceDialog(QDialog):
             """
         
         if not suggestions_html:
-            suggestions_html = "<p style='color: #27AE60;'>✓ No optimization issues detected</p>"
+            suggestions_html = "<p style='color: #27AE60;'>No optimization issues detected</p>"
         
         self.suggestions_text.setHtml(suggestions_html)
     

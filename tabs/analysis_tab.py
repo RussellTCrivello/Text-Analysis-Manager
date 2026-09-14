@@ -423,12 +423,12 @@ class ContentAnalysisTab(BaseTableTab):
             
             # Build summary
             summary = f"""
-📊 {self.translator.tr('stats_analysis_title')}
+{self.translator.tr('stats_analysis_title')}
 
 {self.translator.tr('stats_total_records')}: {total}
 
 {self.translator.tr('stats_classifications')}:
-{chr(10).join(f'  • {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(classifications.items(), key=lambda x: -x[1]))}
+{chr(10).join(f'  {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(classifications.items(), key=lambda x: -x[1]))}
 
 {self.translator.tr('stats_unique_people')}: {len(all_people)}
 {self.translator.tr('stats_top_people')}: {', '.join(list(all_people)[:5])}{'...' if len(all_people) > 5 else ''}

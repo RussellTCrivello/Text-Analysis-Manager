@@ -60,6 +60,7 @@ from dialogs.settings_dialog import SettingsDialog
 from config.config_manager import ConfigManager
 from dialogs.backup_restore_dialog import BackupRestoreDialog
 from dialogs.reset_dialog import ResetDialog
+from icons.icon_manager import get_icon
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -117,6 +118,15 @@ class MainWindow(QMainWindow):
         from PyQt5.QtCore import QTimer
         QTimer.singleShot(0, self._initial_translations_refresh)
         
+        # Enable persisted accessibility settings (focus indicators, high
+        # contrast, and screen-reader hooks) for the main window.
+        try:
+            from utils.accessibility import get_accessibility_manager
+            self.accessibility_manager = get_accessibility_manager()
+            self.accessibility_manager.setup_for_window(self)
+        except Exception as e:
+            logger.warning(f"Could not initialize accessibility features: {e}")
+
         # Test database connection
         if not DatabaseConfig.test_connection():
             QMessageBox.critical(
@@ -329,7 +339,7 @@ class MainWindow(QMainWindow):
         # File menu
         file_menu = menubar.addMenu(self.translator.tr('menu_file'))
         
-        exit_action = QAction(self.translator.tr('menu_exit'), self)
+        exit_action = QAction(get_icon('close', 18), self.translator.tr('menu_exit'), self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
@@ -337,32 +347,32 @@ class MainWindow(QMainWindow):
         # View menu
         view_menu = menubar.addMenu(self.translator.tr('menu_view'))
         
-        sources_action = QAction(self.translator.tr('tab_sources'), self)
+        sources_action = QAction(get_icon('newspaper', 18), self.translator.tr('tab_sources'), self)
         sources_action.setShortcut("Ctrl+1")
         sources_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(0))
         view_menu.addAction(sources_action)
         
-        contents_action = QAction(self.translator.tr('tab_contents'), self)
+        contents_action = QAction(get_icon('document', 18), self.translator.tr('tab_contents'), self)
         contents_action.setShortcut("Ctrl+2")
         contents_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(1))
         view_menu.addAction(contents_action)
         
-        analysis_action = QAction(self.translator.tr('tab_analysis'), self)
+        analysis_action = QAction(get_icon('statistics', 18), self.translator.tr('tab_analysis'), self)
         analysis_action.setShortcut("Ctrl+3")
         analysis_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
         view_menu.addAction(analysis_action)
         
-        all_data_action = QAction(self.translator.tr('tab_all_data'), self)
+        all_data_action = QAction(get_icon('table', 18), self.translator.tr('tab_all_data'), self)
         all_data_action.setShortcut("Ctrl+4")
         all_data_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
         view_menu.addAction(all_data_action)
         
-        timeline_action = QAction(self.translator.tr('tab_timeline'), self)
+        timeline_action = QAction(get_icon('calendar', 18), self.translator.tr('tab_timeline'), self)
         timeline_action.setShortcut("Ctrl+5")
         timeline_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(4))
         view_menu.addAction(timeline_action)
         
-        reports_action = QAction(self.translator.tr('tab_reports'), self)
+        reports_action = QAction(get_icon('reports', 18), self.translator.tr('tab_reports'), self)
         reports_action.setShortcut("Ctrl+6")
         reports_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(5))
         view_menu.addAction(reports_action)
@@ -370,37 +380,41 @@ class MainWindow(QMainWindow):
         # Tools menu
         tools_menu = menubar.addMenu(self.translator.tr('menu_tools'))
         
-        settings_action = QAction(self.translator.tr('menu_settings'), self)
+        settings_action = QAction(get_icon('settings', 18), self.translator.tr('menu_settings'), self)
         settings_action.triggered.connect(self.show_settings)
         tools_menu.addAction(settings_action)
         
         tools_menu.addSeparator()
         
-        backup_action = QAction(self.translator.tr('menu_backup_restore'), self)
+        backup_action = QAction(get_icon('create_backup', 18), self.translator.tr('menu_backup_restore'), self)
         backup_action.triggered.connect(self.show_backup_restore)
         tools_menu.addAction(backup_action)
         
-        reset_action = QAction(self.translator.tr('menu_reset'), self)
+        reset_action = QAction(get_icon('clear', 18), self.translator.tr('menu_reset'), self)
         reset_action.triggered.connect(self.show_reset)
         tools_menu.addAction(reset_action)
         
         tools_menu.addSeparator()
         
         # Print & Export Settings
-        print_settings_action = QAction(self.translator.tr('menu_print_settings'), self)
+        print_settings_action = QAction(get_icon('format', 18), self.translator.tr('menu_print_settings'), self)
         print_settings_action.triggered.connect(self.show_print_settings)
         tools_menu.addAction(print_settings_action)
         
         tools_menu.addSeparator()
         
-        attachments_action = QAction(self.translator.tr('menu_manage_attachments'), self)
+        attachments_action = QAction(get_icon('attach_files', 18), self.translator.tr('menu_manage_attachments'), self)
         attachments_action.triggered.connect(self.show_attachment_manager)
         tools_menu.addAction(attachments_action)
         
         tools_menu.addSeparator()
         
         # Import data action
-        import_action = QAction(self.translator.tr('menu_import_data') if hasattr(self.translator, 'tr') else 'Import Data', self)
+        import_action = QAction(
+            get_icon('import_data', 18),
+            self.translator.tr('menu_import_data') if hasattr(self.translator, 'tr') else 'Import Data',
+            self
+        )
         import_action.setShortcut("Ctrl+I")
         import_action.triggered.connect(self.show_import_dialog)
         tools_menu.addAction(import_action)
@@ -408,27 +422,64 @@ class MainWindow(QMainWindow):
         tools_menu.addSeparator()
         
         # Performance monitor action
-        performance_action = QAction(self.translator.tr('menu_performance') if hasattr(self.translator, 'tr') else 'Performance Monitor', self)
+        performance_action = QAction(
+            get_icon('statistics', 18),
+            self.translator.tr('menu_performance') if hasattr(self.translator, 'tr') else 'Performance Monitor',
+            self
+        )
         performance_action.triggered.connect(self.show_performance_monitor)
         tools_menu.addAction(performance_action)
     
         # Help menu
         help_menu = menubar.addMenu(self.translator.tr('menu_help'))
         
-        help_action = QAction(self.translator.tr('help_title') if hasattr(self.translator, 'tr') else 'Help', self)
+        help_action = QAction(
+            get_icon('help', 18),
+            self.translator.tr('help_title') if hasattr(self.translator, 'tr') else 'Help',
+            self
+        )
         help_action.setShortcut("F1")
         help_action.triggered.connect(self.show_help)
         help_menu.addAction(help_action)
         
-        shortcuts_action = QAction(self.translator.tr('help_shortcuts') if hasattr(self.translator, 'tr') else 'Keyboard Shortcuts', self)
+        shortcuts_action = QAction(
+            get_icon('keyboard', 18),
+            self.translator.tr('help_shortcuts') if hasattr(self.translator, 'tr') else 'Keyboard Shortcuts',
+            self
+        )
         shortcuts_action.triggered.connect(self.show_keyboard_shortcuts)
         help_menu.addAction(shortcuts_action)
         
         help_menu.addSeparator()
         
-        about_action = QAction(self.translator.tr('menu_about'), self)
+        about_action = QAction(get_icon('app_logo', 18), self.translator.tr('menu_about'), self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
+
+        self._menu_icon_bindings = [
+            (exit_action, 'close'),
+            (sources_action, 'newspaper'),
+            (contents_action, 'document'),
+            (analysis_action, 'statistics'),
+            (all_data_action, 'table'),
+            (timeline_action, 'calendar'),
+            (reports_action, 'reports'),
+            (settings_action, 'settings'),
+            (backup_action, 'create_backup'),
+            (reset_action, 'clear'),
+            (print_settings_action, 'format'),
+            (attachments_action, 'attach_files'),
+            (import_action, 'import_data'),
+            (performance_action, 'statistics'),
+            (help_action, 'help'),
+            (shortcuts_action, 'keyboard'),
+            (about_action, 'app_logo'),
+        ]
+
+    def refresh_menu_icons(self):
+        """Reload menu icons after a theme change."""
+        for action, icon_name in getattr(self, '_menu_icon_bindings', []):
+            action.setIcon(get_icon(icon_name, 18))
     
     def show_settings(self):
         """Show settings dialog"""
@@ -539,13 +590,13 @@ class MainWindow(QMainWindow):
                 self.contents_tab.load_data()
             if hasattr(self, 'analysis_tab'):
                 self.analysis_tab.load_data()
-        if hasattr(self, 'all_data_tab'):
-            self.all_data_tab.load_data()
-        if hasattr(self, 'timeline_tab'):
-            self.timeline_tab.load_data()
-        if hasattr(self, 'reports_tab'):
-            self.reports_tab.load_data()
-        self.statusBar().showMessage(self.translator.tr('msg_ready'))
+            if hasattr(self, 'all_data_tab'):
+                self.all_data_tab.load_data()
+            if hasattr(self, 'timeline_tab'):
+                self.timeline_tab.load_data()
+            if hasattr(self, 'reports_tab'):
+                self.reports_tab.load_data()
+            self.statusBar().showMessage(self.translator.tr('msg_ready'))
     
     def refresh_ui(self):
         """Refresh UI after language change"""

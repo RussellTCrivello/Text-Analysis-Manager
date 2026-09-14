@@ -66,6 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_sources_country ON sources (country);
 create_contents_table = """
 CREATE TABLE IF NOT EXISTS contents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NULL,
     content_data TEXT NOT NULL,
     attachments TEXT NULL,
     note TEXT NULL,
@@ -91,7 +92,7 @@ CREATE TABLE IF NOT EXISTS content_analysis (
     content_id INTEGER NOT NULL,
     list_names_people TEXT NULL,
     list_names_places TEXT NULL,
-    coordinates TEXT NULL,
+    list_coordinates TEXT NULL,
     classification TEXT NULL,
     list_sides TEXT NULL,
     date_analysis TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
@@ -107,13 +108,13 @@ CREATE INDEX IF NOT EXISTS idx_content_analysis_date_analysis ON content_analysi
 
 # Execute table creation
 print("Creating tables...")
-cursor.execute(create_source_table)
-cursor.execute(create_contents_table)
-cursor.execute(create_content_analysis_table)
+cursor.executescript(create_source_table)
+cursor.executescript(create_contents_table)
+cursor.executescript(create_content_analysis_table)
 
 # Create triggers (SQLite syntax - simpler than PostgreSQL)
 print("Creating triggers...")
-cursor.execute("""
+cursor.executescript("""
 DROP TRIGGER IF EXISTS trigger_sources_update_timestamp;
 CREATE TRIGGER trigger_sources_update_timestamp
     AFTER UPDATE ON sources
@@ -124,7 +125,7 @@ BEGIN
 END;
 """)
 
-cursor.execute("""
+cursor.executescript("""
 DROP TRIGGER IF EXISTS trigger_contents_update_timestamp;
 CREATE TRIGGER trigger_contents_update_timestamp
     AFTER UPDATE ON contents
@@ -135,7 +136,7 @@ BEGIN
 END;
 """)
 
-cursor.execute("""
+cursor.executescript("""
 DROP TRIGGER IF EXISTS trigger_content_analysis_update_timestamp;
 CREATE TRIGGER trigger_content_analysis_update_timestamp
     AFTER UPDATE ON content_analysis
@@ -151,5 +152,5 @@ conn.commit()
 cursor.close()
 DatabaseConfig.close_connection()
 
-print("✅ Tables created successfully!")
+print("Tables created successfully!")
 print(f"Database location: {DatabaseConfig.get_db_path()}")

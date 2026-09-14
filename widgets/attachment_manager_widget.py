@@ -7,11 +7,10 @@ from typing import List, Optional
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
-    QDialog, QFrame, QMenu, QAction, QSplitter, QGroupBox,
-    QProgressBar, QApplication
+    QDialog, QMenu, QAction, QSplitter, QGroupBox
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QMimeData, QUrl
-from PyQt5.QtGui import QIcon, QDragEnterEvent, QDropEvent, QPixmap, QPainter, QColor, QFont, QPen, QBrush
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QUrl
+from PyQt5.QtGui import QIcon, QDragEnterEvent, QDropEvent
 from translations.translations import TranslationManager
 from utils.attachment_manager import get_attachment_manager, AttachmentManager
 from icons.icon_manager import setup_icon_button, get_icon, get_file_type_icon
@@ -51,111 +50,10 @@ class AttachmentListItem(QListWidgetItem):
         self.setToolTip(tooltip)
     
     def _get_file_icon(self, extension: str) -> QIcon:
-        """Get icon based on file extension - uses distinctive SVG icons"""
-        # Try to get the SVG icon first
-        icon = get_file_type_icon(extension, 32)
-        if not icon.isNull():
-            return icon
-        
-        # Fallback to programmatic icon with enhanced styling
-        size = 32
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
-        
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
-        
-        # Enhanced color palette with gradients
-        colors = {
-            # PDF - Red
-            '.pdf': (QColor('#E74C3C'), QColor('#C0392B')),
-            # Word - Blue
-            '.doc': (QColor('#2B579A'), QColor('#1E3A5F')),
-            '.docx': (QColor('#2B579A'), QColor('#1E3A5F')),
-            '.odt': (QColor('#2B579A'), QColor('#1E3A5F')),
-            '.rtf': (QColor('#2B579A'), QColor('#1E3A5F')),
-            # Excel - Green
-            '.xls': (QColor('#217346'), QColor('#165232')),
-            '.xlsx': (QColor('#217346'), QColor('#165232')),
-            '.ods': (QColor('#217346'), QColor('#165232')),
-            '.csv': (QColor('#217346'), QColor('#165232')),
-            # PowerPoint - Orange-Red
-            '.ppt': (QColor('#D24726'), QColor('#A83B1E')),
-            '.pptx': (QColor('#D24726'), QColor('#A83B1E')),
-            '.odp': (QColor('#D24726'), QColor('#A83B1E')),
-            # Images - Purple
-            '.jpg': (QColor('#9B59B6'), QColor('#7D3C98')),
-            '.jpeg': (QColor('#9B59B6'), QColor('#7D3C98')),
-            '.png': (QColor('#9B59B6'), QColor('#7D3C98')),
-            '.gif': (QColor('#9B59B6'), QColor('#7D3C98')),
-            '.bmp': (QColor('#9B59B6'), QColor('#7D3C98')),
-            '.webp': (QColor('#9B59B6'), QColor('#7D3C98')),
-            '.svg': (QColor('#9B59B6'), QColor('#7D3C98')),
-            # Videos - Orange
-            '.mp4': (QColor('#E67E22'), QColor('#D35400')),
-            '.avi': (QColor('#E67E22'), QColor('#D35400')),
-            '.mkv': (QColor('#E67E22'), QColor('#D35400')),
-            '.mov': (QColor('#E67E22'), QColor('#D35400')),
-            '.webm': (QColor('#E67E22'), QColor('#D35400')),
-            # Audio - Teal
-            '.mp3': (QColor('#1ABC9C'), QColor('#16A085')),
-            '.wav': (QColor('#1ABC9C'), QColor('#16A085')),
-            '.flac': (QColor('#1ABC9C'), QColor('#16A085')),
-            '.aac': (QColor('#1ABC9C'), QColor('#16A085')),
-            '.ogg': (QColor('#1ABC9C'), QColor('#16A085')),
-            # Archives - Yellow-Orange
-            '.zip': (QColor('#F39C12'), QColor('#D68910')),
-            '.rar': (QColor('#F39C12'), QColor('#D68910')),
-            '.7z': (QColor('#F39C12'), QColor('#D68910')),
-            '.tar': (QColor('#F39C12'), QColor('#D68910')),
-            '.gz': (QColor('#F39C12'), QColor('#D68910')),
-            # Text files - Gray
-            '.txt': (QColor('#7F8C8D'), QColor('#5D6D7E')),
-            '.log': (QColor('#7F8C8D'), QColor('#5D6D7E')),
-            '.md': (QColor('#7F8C8D'), QColor('#5D6D7E')),
-            # Code files - Purple
-            '.py': (QColor('#8E44AD'), QColor('#6C3483')),
-            '.js': (QColor('#F1C40F'), QColor('#D4AC0D')),
-            '.html': (QColor('#E44D26'), QColor('#C43D1A')),
-            '.css': (QColor('#264DE4'), QColor('#1E3EB8')),
-            '.json': (QColor('#5D6D7E'), QColor('#4A5568')),
-        }
-        
-        color_pair = colors.get(extension.lower(), (QColor('#3498DB'), QColor('#2980B9')))
-        main_color, darker_color = color_pair
-        
-        # Draw rounded rectangle with gradient-like effect
-        from PyQt5.QtGui import QLinearGradient
-        from PyQt5.QtCore import QRectF
-        
-        rect = QRectF(2, 2, size - 4, size - 4)
-        gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        gradient.setColorAt(0, main_color.lighter(110))
-        gradient.setColorAt(1, darker_color)
-        
-        painter.setBrush(QBrush(gradient))
-        painter.setPen(QPen(darker_color.darker(120), 1))
-        painter.drawRoundedRect(rect, 6, 6)
-        
-        # Draw extension text with shadow
-        font = QFont('Arial', 7, QFont.Bold)
-        painter.setFont(font)
-        
-        ext_text = extension[1:4].upper() if extension else '?'
-        
-        # Text shadow
-        painter.setPen(QColor(0, 0, 0, 80))
-        shadow_rect = pixmap.rect()
-        shadow_rect.translate(1, 1)
-        painter.drawText(shadow_rect, Qt.AlignCenter, ext_text)
-        
-        # Main text
-        painter.setPen(QColor('#FFFFFF'))
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, ext_text)
-        
-        painter.end()
-        return QIcon(pixmap)
+        """Return the graphical asset assigned to a file extension."""
+        # FILE_TYPE_ICONS maps unknown extensions to the generic SVG asset, so
+        # no text-rendered extension fallback is needed.
+        return get_file_type_icon(extension, 32)
 
 
 class AttachmentManagerWidget(QWidget):
@@ -203,24 +101,24 @@ class AttachmentManagerWidget(QWidget):
         
         # Action buttons with distinctive attachment-specific icons
         self.btn_add = QPushButton()
-        setup_icon_button(self.btn_add, 'btn_attachment_add', self._tr('btn_add_attachment'))
+        setup_icon_button(self.btn_add, 'btn_attachment_add', self._tr('btn_add_attachment'), use_white_icon=True)
         self.btn_add.clicked.connect(self.add_attachments)
         self.btn_add.setStyleSheet(self._get_attachment_button_style('add'))
         
         self.btn_remove = QPushButton()
-        setup_icon_button(self.btn_remove, 'btn_attachment_remove', self._tr('btn_remove_attachment'))
+        setup_icon_button(self.btn_remove, 'btn_attachment_remove', self._tr('btn_remove_attachment'), use_white_icon=True)
         self.btn_remove.clicked.connect(self.remove_selected)
         self.btn_remove.setEnabled(False)
         self.btn_remove.setStyleSheet(self._get_attachment_button_style('remove'))
         
         self.btn_open = QPushButton()
-        setup_icon_button(self.btn_open, 'btn_attachment_open', self._tr('btn_open_attachment'))
+        setup_icon_button(self.btn_open, 'btn_attachment_open', self._tr('btn_open_attachment'), use_white_icon=True)
         self.btn_open.clicked.connect(self.open_selected)
         self.btn_open.setEnabled(False)
         self.btn_open.setStyleSheet(self._get_attachment_button_style('open'))
         
         self.btn_folder = QPushButton()
-        setup_icon_button(self.btn_folder, 'btn_attachment_folder', self._tr('btn_open_folder'))
+        setup_icon_button(self.btn_folder, 'btn_attachment_folder', self._tr('btn_open_folder'), use_white_icon=True)
         self.btn_folder.clicked.connect(self.open_folder)
         self.btn_folder.setStyleSheet(self._get_attachment_button_style('folder'))
         
@@ -278,6 +176,10 @@ class AttachmentManagerWidget(QWidget):
             'msg_confirm_remove': 'Remove selected attachment(s)?',
             'msg_warning': 'Warning',
             'msg_error': 'Error',
+            'attachment_copy_failed': 'Could not copy attachment: {error}',
+            'attachment_open_failed': 'Could not open the attachment.',
+            'attachment_folder_open_failed': 'Could not open the attachment folder.',
+            'attachment_delete_failed': 'Could not delete attachment: {error}',
             'msg_no_selection': 'No file selected',
         }
         return fallbacks.get(key, key)
@@ -346,9 +248,11 @@ class AttachmentManagerWidget(QWidget):
             return
         
         added_paths = []
+        failures = []
         
         for file_path in file_paths:
-            if not os.path.exists(file_path):
+            if not os.path.isfile(file_path):
+                failures.append(file_path)
                 continue
             
             if copy_to_folder and self.source_name:
@@ -360,8 +264,7 @@ class AttachmentManagerWidget(QWidget):
                     added_paths.append(new_path)
                 else:
                     logger.warning(f"Failed to copy attachment: {new_path}")
-                    # Use original path as fallback
-                    added_paths.append(file_path)
+                    failures.append(new_path)
             else:
                 # Use original path
                 added_paths.append(file_path)
@@ -373,6 +276,11 @@ class AttachmentManagerWidget(QWidget):
         
         self.update_display()
         self.attachments_changed.emit(self.file_paths)
+        if failures:
+            self.status_label.setText(
+                self._tr('attachment_copy_failed').format(error=failures[0])
+            )
+            self.status_label.setStyleSheet(AppStyles.get_component_style('status_label_error'))
     
     def remove_selected(self):
         """Remove selected attachments"""
@@ -391,17 +299,27 @@ class AttachmentManagerWidget(QWidget):
         if reply != QMessageBox.Yes:
             return
         
+        failures = []
         for item in selected_items:
             file_path = item.data(Qt.UserRole)
-            if file_path in self.file_paths:
-                self.file_paths.remove(file_path)
-                
-                # Optionally remove the actual file if it's in our managed folder
-                if self.source_name and self.attachment_manager.source_folder in file_path:
-                    self.attachment_manager.remove_attachment(file_path)
-        
+            if file_path not in self.file_paths:
+                continue
+
+            # Managed copies are deleted from disk; unmanaged paths are only
+            # detached from this record. Never hide a managed delete failure.
+            if self.attachment_manager.is_managed_path(file_path):
+                if not self.attachment_manager.remove_attachment(file_path):
+                    failures.append(file_path)
+                    continue
+            self.file_paths.remove(file_path)
+
         self.update_display()
         self.attachments_changed.emit(self.file_paths)
+        if failures:
+            self.status_label.setText(
+                self._tr('attachment_delete_failed').format(error=failures[0])
+            )
+            self.status_label.setStyleSheet(AppStyles.get_component_style('status_label_error'))
     
     def open_selected(self):
         """Open selected attachment"""
@@ -410,27 +328,38 @@ class AttachmentManagerWidget(QWidget):
             return
         
         file_path = selected_items[0].data(Qt.UserRole)
-        self.attachment_manager.open_attachment(file_path)
-        self.attachment_opened.emit(file_path)
+        if self.attachment_manager.open_attachment(file_path):
+            self.attachment_opened.emit(file_path)
+        else:
+            QMessageBox.warning(
+                self,
+                self._tr('msg_warning'),
+                self._tr('attachment_open_failed')
+            )
     
     def open_folder(self):
         """Open the source folder in file explorer"""
         if self.source_name:
-            self.attachment_manager.open_source_folder(self.source_name)
+            if not self.attachment_manager.open_source_folder(self.source_name):
+                QMessageBox.warning(
+                    self,
+                    self._tr('msg_warning'),
+                    self._tr('attachment_folder_open_failed')
+                )
         else:
-            # Open the base Source folder
-            import subprocess
-            import sys
+            # Open the base Source folder through the manager's guarded
+            # platform launcher. This keeps missing desktop helpers (for
+            # example xdg-open in a headless Linux environment) from
+            # escaping as an unhandled button-click exception.
             folder = self.attachment_manager.source_folder
             if not os.path.exists(folder):
                 os.makedirs(folder, exist_ok=True)
-            
-            if sys.platform == 'win32':
-                os.startfile(folder)
-            elif sys.platform == 'darwin':
-                subprocess.run(['open', folder])
-            else:
-                subprocess.run(['xdg-open', folder])
+            if not self.attachment_manager.open_attachment(folder):
+                QMessageBox.warning(
+                    self,
+                    self._tr('msg_warning'),
+                    self._tr('attachment_folder_open_failed')
+                )
     
     def on_selection_changed(self):
         """Handle selection change"""
@@ -441,8 +370,14 @@ class AttachmentManagerWidget(QWidget):
     def on_item_double_clicked(self, item: QListWidgetItem):
         """Handle double click on item"""
         file_path = item.data(Qt.UserRole)
-        self.attachment_manager.open_attachment(file_path)
-        self.attachment_opened.emit(file_path)
+        if self.attachment_manager.open_attachment(file_path):
+            self.attachment_opened.emit(file_path)
+        else:
+            QMessageBox.warning(
+                self,
+                self._tr('msg_warning'),
+                self._tr('attachment_open_failed')
+            )
     
     def show_context_menu(self, pos):
         """Show context menu for attachments"""
@@ -477,10 +412,14 @@ class AttachmentManagerWidget(QWidget):
         self.count_label.setText(f"({count})")
         
         # Update status
+        self.status_label.setStyleSheet(AppStyles.get_component_style('status_label_muted'))
         if count > 0:
-            total_size = sum(
-                os.path.getsize(f) for f in self.file_paths if os.path.exists(f)
-            )
+            total_size = 0
+            for file_path in self.file_paths:
+                try:
+                    total_size += os.path.getsize(file_path)
+                except OSError:
+                    logger.warning(f"Could not read attachment size: {file_path}")
             size_str = self.attachment_manager.format_size(total_size)
             self.status_label.setText(f"{count} files, {size_str}")
         else:
@@ -564,6 +503,10 @@ class AttachmentManagerDialog(QDialog):
             'btn_close': 'Close',
             'btn_open_folder': 'Open Folder',
             'btn_delete': 'Delete',
+            'msg_warning': 'Warning',
+            'attachment_open_failed': 'Could not open the attachment.',
+            'attachment_folder_open_failed': 'Could not open the attachment folder.',
+            'attachment_delete_failed': 'Could not delete attachment: {error}',
             'msg_total_attachments': 'Total: {count} attachments ({size})',
         }
         return fallbacks.get(key, key)
@@ -638,7 +581,7 @@ class AttachmentManagerDialog(QDialog):
         source_btn_layout.setSpacing(btn_spacing)
         
         self.btn_open_source_folder = QPushButton()
-        setup_icon_button(self.btn_open_source_folder, 'btn_attachment_folder', self._tr('btn_open_folder'))
+        setup_icon_button(self.btn_open_source_folder, 'btn_attachment_folder', self._tr('btn_open_folder'), use_white_icon=True)
         self.btn_open_source_folder.clicked.connect(self.open_source_folder)
         self.btn_open_source_folder.setEnabled(False)
         self.btn_open_source_folder.setStyleSheet(self._get_dialog_button_style('folder'))
@@ -664,13 +607,13 @@ class AttachmentManagerDialog(QDialog):
         attach_btn_layout.setSpacing(btn_spacing)
         
         self.btn_open_attachment = QPushButton()
-        setup_icon_button(self.btn_open_attachment, 'btn_attachment_open', self._tr('btn_open_attachment') if self.translator else 'Open')
+        setup_icon_button(self.btn_open_attachment, 'btn_attachment_open', self._tr('btn_open_attachment') if self.translator else 'Open', use_white_icon=True)
         self.btn_open_attachment.clicked.connect(self.open_selected_attachment)
         self.btn_open_attachment.setEnabled(False)
         self.btn_open_attachment.setStyleSheet(self._get_dialog_button_style('open'))
         
         self.btn_delete_attachment = QPushButton()
-        setup_icon_button(self.btn_delete_attachment, 'btn_attachment_remove', self._tr('btn_delete'))
+        setup_icon_button(self.btn_delete_attachment, 'btn_attachment_remove', self._tr('btn_delete'), use_white_icon=True)
         self.btn_delete_attachment.clicked.connect(self.delete_selected_attachment)
         self.btn_delete_attachment.setEnabled(False)
         self.btn_delete_attachment.setStyleSheet(self._get_dialog_button_style('remove'))
@@ -764,12 +707,22 @@ class AttachmentManagerDialog(QDialog):
         selected = self.sources_list.selectedItems()
         if selected:
             source_name = selected[0].data(Qt.UserRole)
-            self.attachment_manager.open_source_folder(source_name)
-    
+            if not self.attachment_manager.open_source_folder(source_name):
+                QMessageBox.warning(
+                    self,
+                    self._tr('msg_warning') if self.translator else 'Warning',
+                    self._tr('attachment_folder_open_failed')
+                )
+
     def open_attachment(self, item: QListWidgetItem):
         """Open attachment"""
         file_path = item.data(Qt.UserRole)
-        self.attachment_manager.open_attachment(file_path)
+        if not self.attachment_manager.open_attachment(file_path):
+            QMessageBox.warning(
+                self,
+                self._tr('msg_warning') if self.translator else 'Warning',
+                self._tr('attachment_open_failed')
+            )
     
     def open_selected_attachment(self):
         """Open selected attachment"""
@@ -794,10 +747,12 @@ class AttachmentManagerDialog(QDialog):
         if reply != QMessageBox.Yes:
             return
         
+        failures = []
         for item in selected:
             file_path = item.data(Qt.UserRole)
-            self.attachment_manager.remove_attachment(file_path)
-        
+            if not self.attachment_manager.remove_attachment(file_path):
+                failures.append(file_path)
+
         # Reload current source
         source_selected = self.sources_list.selectedItems()
         if source_selected:
@@ -806,3 +761,8 @@ class AttachmentManagerDialog(QDialog):
         
         # Update sources list counts
         self.load_data()
+        if failures:
+            self.status_label.setText(
+                self._tr('attachment_delete_failed').format(error=failures[0])
+            )
+            self.status_label.setStyleSheet(AppStyles.get_component_style('status_label_error'))

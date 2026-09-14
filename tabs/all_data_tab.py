@@ -3,6 +3,7 @@ All Data Display Tab - Unified view of all data (Read-Only)
 Page-specific buttons: Filter by Type, Quick View, Generate Report
 """
 from typing import List, Optional, Dict
+import os
 from datetime import datetime
 
 from PyQt5.QtWidgets import (
@@ -17,7 +18,7 @@ from core.toolbar_factory import ToolbarFactory, ToolbarConfig, ButtonConfig
 from db.db_manager import DatabaseManager
 from translations.translations import TranslationManager
 from styles.styles import AppStyles
-from icons.icon_manager import setup_icon_button
+from icons.icon_manager import setup_icon_button, get_icon
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -41,7 +42,10 @@ class AllDataDisplayTab(QWidget):
         self.translator = translator
         self.toolbar_factory = ToolbarFactory(translator)
         self.data = []
+        # Keep the complete filtered result separate from the current page so
+        # exports, quick reports, and counts are not limited by pagination.
         self.filtered_data = []
+        self.page_data = []
         self.current_type_filter = 'all'
         
         # Apply RTL/LTR layout direction based on language
@@ -137,10 +141,19 @@ class AllDataDisplayTab(QWidget):
         self.title_label.setStyleSheet(AppStyles.get_component_style('page_title'))
         header_layout.addWidget(self.title_label)
         
-        # Read-only badge
-        self.readonly_badge = QLabel("📖 " + self.translator.tr('msg_readonly'))
+        # Read-only badge: graphical icon plus translatable text.
+        readonly_container = QWidget()
+        readonly_layout = QHBoxLayout(readonly_container)
+        readonly_layout.setContentsMargins(0, 0, 0, 0)
+        readonly_layout.setSpacing(AppStyles.get_spacing(1))
+        self.readonly_icon = QLabel()
+        self.readonly_icon.setPixmap(get_icon('preview', 16).pixmap(16, 16))
+        self.readonly_icon.setToolTip(self.translator.tr('msg_readonly'))
+        self.readonly_badge = QLabel(self.translator.tr('msg_readonly'))
         self.readonly_badge.setStyleSheet(AppStyles.get_component_style('readonly_badge'))
-        header_layout.addWidget(self.readonly_badge)
+        readonly_layout.addWidget(self.readonly_icon)
+        readonly_layout.addWidget(self.readonly_badge)
+        header_layout.addWidget(readonly_container)
         header_layout.addStretch()
         
         scroll_layout.addLayout(header_layout, 0)  # stretch factor 0 = fixed
@@ -339,8 +352,8 @@ class AllDataDisplayTab(QWidget):
     def on_selection_changed(self):
         """Handle selection change"""
         current_row = self.data_table.currentRow()
-        if current_row >= 0 and current_row < len(self.filtered_data):
-            row_data = self.filtered_data[current_row]
+        if current_row >= 0 and current_row < len(self.page_data):
+            row_data = self.page_data[current_row]
             self.preview_panel.update_preview(row_data)
         else:
             self.preview_panel.clear_preview()
@@ -424,13 +437,14 @@ class AllDataDisplayTab(QWidget):
         
         start, end = self.pagination.get_page_range()
         
-        # Get paginated data from full filtered data
-        self.filtered_data = self._full_filtered_data[start:end]
+        # Get paginated data from full filtered data without replacing the
+        # complete result set used by export/report actions.
+        self.page_data = self._full_filtered_data[start:end]
         
         self.refresh_display()
         
         # Update status
-        page_count = len(self.filtered_data)
+        page_count = len(self.page_data)
         total_filtered = len(self._full_filtered_data)
         total_count = len(self.data) if self.data else 0
         
@@ -438,10 +452,11 @@ class AllDataDisplayTab(QWidget):
         of_text = self.translator.tr('pagination_of') if hasattr(self.translator, 'tr') else 'of'
         records_text = self.translator.tr('lbl_records') if hasattr(self.translator, 'tr') else 'records'
         
+        range_text = f"{start + 1}-{start + page_count}" if page_count else "0-0"
         if total_filtered < total_count:
-            self.status_label.setText(f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_filtered} ({total_count} {records_text})")
+            self.status_label.setText(f"{showing_text} {range_text} {of_text} {total_filtered} ({total_count} {records_text})")
         else:
-            self.status_label.setText(f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_count} {records_text}")
+            self.status_label.setText(f"{showing_text} {range_text} {of_text} {total_count} {records_text}")
     
     def on_page_changed(self, page: int):
         """Handle page change"""
@@ -475,7 +490,7 @@ class AllDataDisplayTab(QWidget):
         """Refresh table display"""
         self.data_table.setSortingEnabled(False)
         self.data_table.setRowCount(0)
-        self.data_table.setRowCount(len(self.filtered_data))
+        self.data_table.setRowCount(len(self.page_data))
         
         # Row colors that match the filter button colors
         type_colors = {
@@ -490,7 +505,7 @@ class AllDataDisplayTab(QWidget):
             start, _ = self.pagination.get_page_range()
             start_row_num = start + 1
         
-        for row_idx, row_data in enumerate(self.filtered_data):
+        for row_idx, row_data in enumerate(self.page_data):
             # Row number (reflects actual position in full data)
             actual_row_num = start_row_num + row_idx
             row_num_item = QTableWidgetItem(str(actual_row_num))
@@ -520,7 +535,7 @@ class AllDataDisplayTab(QWidget):
         self.data_table.setSortingEnabled(True)
         
         # Automatically select first row if data exists to show preview by default
-        if len(self.filtered_data) > 0:
+        if len(self.page_data) > 0:
             from PyQt5.QtCore import QTimer
             # Use QTimer to select after table is fully rendered
             QTimer.singleShot(50, lambda: self._select_first_row())
@@ -574,14 +589,15 @@ class AllDataDisplayTab(QWidget):
     def quick_view(self):
         """Quick view of selected record"""
         current_row = self.data_table.currentRow()
-        if current_row < 0:
+        if current_row < 0 or current_row >= len(self.page_data):
             QMessageBox.warning(self, self.translator.tr('msg_no_selection'),
                               self.translator.tr('msg_select_record'))
             return
         
-        row_data = self.filtered_data[current_row]
+        row_data = self.page_data[current_row]
         
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QLabel
+        from html import escape
         from styles.styles import AppStyles
         
         dialog = QDialog(self)
@@ -597,12 +613,12 @@ class AllDataDisplayTab(QWidget):
         badge_color = type_colors.get(record_type.lower(), '#7F8C8D')
         
         type_label = QLabel(f"<span style='background-color: {badge_color}; color: white; "
-                          f"padding: 4px 12px; border-radius: 4px;'>{record_type.upper()}</span>")
+                          f"padding: 4px 12px; border-radius: 4px;'>{escape(str(record_type).upper())}</span>")
         layout.addWidget(type_label)
         
-        # Title/Name
-        title = row_data.get('title') or row_data.get('source_name') or 'No Title'
-        title_label = QLabel(f"<h2>{title}</h2>")
+        # Title/Name. Unified rows expose content titles as content_title.
+        title = row_data.get('content_title') or row_data.get('source_name') or 'No Title'
+        title_label = QLabel(f"<h2>{escape(str(title))}</h2>")
         layout.addWidget(title_label)
         
         # Content area
@@ -613,7 +629,7 @@ class AllDataDisplayTab(QWidget):
         content_parts = []
         for key, value in row_data.items():
             if value and key not in ['id', 'record_type']:
-                content_parts.append(f"<b>{key}:</b> {value}")
+                content_parts.append(f"<b>{escape(str(key))}:</b> {escape(str(value))}")
         
         content_edit.setHtml("<br>".join(content_parts))
         layout.addWidget(content_edit)
@@ -641,6 +657,11 @@ class AllDataDisplayTab(QWidget):
                 for i in range(parent.tab_widget.count()):
                     tab = parent.tab_widget.widget(i)
                     if isinstance(tab, ReportsTab):
+                        # Transfer the complete filtered result set, not just
+                        # the current page, into the report workspace.
+                        columns = [col[0] for col in self.columns]
+                        tab.set_data(self.filtered_data, columns=columns,
+                                     title=self.translator.tr('tab_all_data'))
                         parent.tab_widget.setCurrentIndex(i)
                         QMessageBox.information(
                             self,
@@ -757,9 +778,10 @@ class AllDataDisplayTab(QWidget):
             return
         
         try:
+            success = False
             if export_format == ExportPreviewDialog.FORMAT_EXCEL:
                 from utils.excel_export import export_to_excel
-                export_to_excel(
+                success = export_to_excel(
                     data,
                     self.columns,
                     filepath,
@@ -780,10 +802,11 @@ class AllDataDisplayTab(QWidget):
                         for row in data:
                             filtered_row = {key: row.get(key, '') for key in fieldnames}
                             writer.writerow(filtered_row)
+                success = True
             
             elif export_format == ExportPreviewDialog.FORMAT_WORD:
                 from utils.word_export import export_to_word
-                export_to_word(
+                success = export_to_word(
                     data,
                     self.columns,
                     filepath,
@@ -829,6 +852,7 @@ class AllDataDisplayTab(QWidget):
                 doc = QTextDocument()
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, ps)
+                success = os.path.isfile(filepath) and os.path.getsize(filepath) > 0
             
             elif export_format == ExportPreviewDialog.FORMAT_JSON:
                 from utils.json_xml_export import export_to_json
@@ -840,7 +864,7 @@ class AllDataDisplayTab(QWidget):
                         if col_key in row:
                             filtered_row[col_key] = row[col_key]
                     filtered_data.append(filtered_row)
-                export_to_json(filtered_data, filepath)
+                success = export_to_json(filtered_data, filepath)
             
             elif export_format == ExportPreviewDialog.FORMAT_XML:
                 from utils.json_xml_export import export_to_xml
@@ -852,7 +876,7 @@ class AllDataDisplayTab(QWidget):
                         if col_key in row:
                             filtered_row[col_key] = row[col_key]
                     filtered_data.append(filtered_row)
-                export_to_xml(filtered_data, filepath, root_name='all_data', record_name='record')
+                success = export_to_xml(filtered_data, filepath, root_name='all_data', record_name='record')
             
             elif export_format == ExportPreviewDialog.FORMAT_JSON_LINES:
                 from utils.json_xml_export import export_to_json_lines
@@ -864,7 +888,12 @@ class AllDataDisplayTab(QWidget):
                         if col_key in row:
                             filtered_row[col_key] = row[col_key]
                     filtered_data.append(filtered_row)
-                export_to_json_lines(filtered_data, filepath)
+                success = export_to_json_lines(filtered_data, filepath)
+            else:
+                raise ValueError(f"Unsupported export format: {export_format}")
+
+            if not success or not os.path.isfile(filepath) or os.path.getsize(filepath) == 0:
+                raise IOError(f"Export did not create a valid output file: {filepath}")
             
             QMessageBox.information(
                 self,
@@ -946,6 +975,8 @@ class AllDataDisplayTab(QWidget):
                 doc = QTextDocument()
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, settings)
+                if not os.path.isfile(filename) or os.path.getsize(filename) == 0:
+                    raise IOError(f"PDF output was not created: {filename}")
                 
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                        f"{self.translator.tr('msg_exported_to')}:\n{filename}")
@@ -974,6 +1005,8 @@ class AllDataDisplayTab(QWidget):
                         writer = csv.DictWriter(f, fieldnames=self.filtered_data[0].keys())
                         writer.writeheader()
                         writer.writerows(self.filtered_data)
+                if not os.path.isfile(filename) or os.path.getsize(filename) == 0:
+                    raise IOError(f"CSV output was not created: {filename}")
                 
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                       f"Exported to:\n{filename}")
@@ -997,13 +1030,15 @@ class AllDataDisplayTab(QWidget):
         if filename:
             try:
                 from utils.excel_export import export_to_excel
-                export_to_excel(
+                success = export_to_excel(
                     self.filtered_data,
                     self.columns,
                     filename,
                     self.translator,
                     'all_data'
                 )
+                if not success or not os.path.isfile(filename):
+                    raise IOError(f"Excel output was not created: {filename}")
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                       f"Exported to:\n{filename}")
             except Exception as e:
@@ -1026,13 +1061,15 @@ class AllDataDisplayTab(QWidget):
         if filename:
             try:
                 from utils.word_export import export_to_word
-                export_to_word(
+                success = export_to_word(
                     self.filtered_data,
                     self.columns,
                     filename,
                     self.translator,
                     'all_data'
                 )
+                if not success or not os.path.isfile(filename):
+                    raise IOError(f"Word output was not created: {filename}")
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                       f"Exported to:\n{filename}")
             except Exception as e:
@@ -1089,7 +1126,9 @@ class AllDataDisplayTab(QWidget):
         
         # Refresh read-only badge
         if hasattr(self, 'readonly_badge') and self.readonly_badge:
-            self.readonly_badge.setText("📖 " + self.translator.tr('msg_readonly'))
+            self.readonly_badge.setText(self.translator.tr('msg_readonly'))
+            if hasattr(self, 'readonly_icon'):
+                self.readonly_icon.setToolTip(self.translator.tr('msg_readonly'))
         
         # Refresh toolbar translations
         if hasattr(self, 'toolbar_factory'):

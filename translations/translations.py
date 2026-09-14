@@ -93,6 +93,9 @@ class TranslationManager:
             'bulk_edit_fields': 'Edit Fields',
             'bulk_import_file': 'Import File',
             'bulk_no_selection': 'No records selected',
+            'bulk_no_fields_update': 'No fields to update',
+            'bulk_select_file': 'Please select a file to import',
+            'bulk_selected_count': '{count} selected',
             'bulk_edit_info': 'Select fields to update. Leave empty to keep current value.',
             'bulk_import_info': 'Select a CSV file to import. The file should have columns matching the table structure.',
             'bulk_import_preview': 'Preview',
@@ -102,8 +105,13 @@ class TranslationManager:
             'advanced_search': 'Advanced Search',
             'search_query_builder': 'Query Builder',
             'search_add_condition': 'Add Condition',
+            'search_add_condition_required': 'Please add at least one search condition',
+            'search_save_condition_required': 'Please add at least one search condition to save',
+            'search_select_saved_update': 'Please select a saved search to update',
+            'search_updated_successfully': 'Search updated successfully',
             'search_logic': 'Logic',
             'search_results': 'Results',
+            'search_results_count': '{count} results',
             'search_save': 'Save Search',
             
             'pagination_first': 'First Page',
@@ -634,6 +642,8 @@ class TranslationManager:
             'report_name': 'Report Name',
             'report_name_hint': 'Enter report name',
             'report_name_required': 'Report name is required',
+            'report_invalid_file': 'Invalid report file',
+            'entry': 'Entry',
             'report_new_confirm': 'Create a new report? Unsaved changes will be lost.',
             'report_new_created': 'New report created',
             'report_saved': 'Report saved',
@@ -745,6 +755,10 @@ class TranslationManager:
             'attachment_size': 'Size',
             'attachment_modified': 'Modified',
             'attachment_file_not_found': 'File not found',
+            'attachment_copy_failed': 'Could not copy attachment: {error}',
+            'attachment_open_failed': 'Could not open the attachment.',
+            'attachment_folder_open_failed': 'Could not open the attachment folder.',
+            'attachment_delete_failed': 'Could not delete attachment: {error}',
             'attachment_delete_confirm': 'Delete {count} attachment(s)?',
             
             # New features - Search History
@@ -813,6 +827,11 @@ class TranslationManager:
             'settings_font_scale': 'Font Scale',
             'settings_color_blind': 'Color Blind Mode',
             'settings_none': 'None',
+            'settings_protanopia': 'Protanopia (red-blind)',
+            'settings_deuteranopia': 'Deuteranopia (green-blind)',
+            'settings_tritanopia': 'Tritanopia (blue-blind)',
+            'settings_points': 'pt',
+            'settings_seconds': 'sec',
             'settings_keyboard': 'Keyboard Accessibility',
             'settings_keyboard_hints': 'Show Keyboard Shortcuts',
             'settings_focus_indicator': 'Enhanced Focus Indicator',
@@ -924,6 +943,12 @@ class TranslationManager:
             
             # Validation
             'msg_no_entries_to_validate': 'No entries to validate',
+            'msg_select_column_to_print': 'Please select at least one column to print.',
+            'msg_file_saved_success': 'File saved successfully',
+            'msg_deleted_records': 'Deleted {count} record(s)',
+            'msg_updated_records': 'Updated {count} record(s)',
+            'msg_invalid_entries_count': 'Warning: {count} invalid: {entries}',
+            'msg_valid_entries_count': 'Valid: all {count} entries',
             
             # Performance monitor
             'perf_avg_query_time': 'Avg Query Time',
@@ -953,6 +978,17 @@ class TranslationManager:
             'tab_contents': 'المحتويات',
             'tab_analysis': 'التحليل',
             'tab_all_data': 'جميع البيانات',
+            'advanced_search': 'بحث متقدم',
+            'search_add_condition': 'إضافة شرط',
+            'search_add_condition_required': 'يرجى إضافة شرط بحث واحد على الأقل',
+            'search_save_condition_required': 'يرجى إضافة شرط بحث واحد على الأقل للحفظ',
+            'search_select_saved_update': 'يرجى تحديد بحث محفوظ لتحديثه',
+            'search_updated_successfully': 'تم تحديث البحث بنجاح',
+            'search_logic': 'منطق البحث',
+            'search_query_builder': 'منشئ الاستعلام',
+            'search_results': 'النتائج',
+            'search_results_count': '{count} نتيجة',
+            'search_save': 'حفظ البحث',
             
             # Buttons
             'btn_add': 'إضافة',
@@ -988,6 +1024,8 @@ class TranslationManager:
             'btn_duplicate_content': 'نسخ المحتوى',
             'btn_import_analysis': 'استيراد التحليل',
             'btn_duplicate_analysis': 'نسخ التحليل',
+            'btn_browse': 'تصفح',
+            'btn_execute': 'تنفيذ',
             
             # Page-specific buttons
             'btn_import_sources': 'استيراد المصادر',
@@ -1008,6 +1046,31 @@ class TranslationManager:
             'lbl_records': 'سجلات',
             'msg_readonly': 'للقراءة فقط',
             
+            # Bulk operations and export templates
+            'bulk_operations': 'العمليات الجماعية',
+            'bulk_operation_type': 'نوع العملية',
+            'bulk_delete': 'حذف جماعي',
+            'bulk_edit': 'تعديل جماعي',
+            'bulk_import': 'استيراد جماعي',
+            'bulk_select_records': 'تحديد السجلات',
+            'bulk_edit_fields': 'تعديل الحقول',
+            'bulk_import_file': 'ملف الاستيراد',
+            'bulk_no_selection': 'لم يتم تحديد سجلات',
+            'bulk_no_fields_update': 'لا توجد حقول للتحديث',
+            'bulk_select_file': 'يرجى تحديد ملف للاستيراد',
+            'bulk_selected_count': 'تم تحديد {count}',
+            'bulk_edit_info': 'حدد الحقول المراد تحديثها. اتركها فارغة للاحتفاظ بالقيمة الحالية.',
+            'bulk_import_info': 'حدد ملف CSV للاستيراد. يجب أن يحتوي الملف على أعمدة تطابق بنية الجدول.',
+            'bulk_import_preview': 'معاينة',
+            'export_template': 'قالب التصدير',
+            'export_template_save': 'حفظ القالب',
+            'export_template_load': 'تحميل القالب',
+            'export_template_name': 'اسم القالب',
+            'help_title': 'المساعدة',
+            'validation_error': 'خطأ في التحقق',
+            'validation_required': 'هذا الحقل مطلوب',
+            'validation_invalid': 'قيمة غير صالحة',
+
             # Pagination
             'pagination_first': 'الصفحة الأولى',
             'pagination_previous': 'الصفحة السابقة',
@@ -1528,6 +1591,8 @@ class TranslationManager:
             'report_name': 'اسم التقرير',
             'report_name_hint': 'أدخل اسم التقرير',
             'report_name_required': 'اسم التقرير مطلوب',
+            'report_invalid_file': 'ملف تقرير غير صالح',
+            'entry': 'إدخال',
             'report_new_confirm': 'إنشاء تقرير جديد؟ سيتم فقدان التغييرات غير المحفوظة.',
             'report_new_created': 'تم إنشاء تقرير جديد',
             'report_saved': 'تم حفظ التقرير',
@@ -1639,6 +1704,10 @@ class TranslationManager:
             'attachment_size': 'الحجم',
             'attachment_modified': 'تاريخ التعديل',
             'attachment_file_not_found': 'الملف غير موجود',
+            'attachment_copy_failed': 'تعذر نسخ المرفق: {error}',
+            'attachment_open_failed': 'تعذر فتح المرفق.',
+            'attachment_folder_open_failed': 'تعذر فتح مجلد المرفقات.',
+            'attachment_delete_failed': 'تعذر حذف المرفق: {error}',
             'attachment_delete_confirm': 'حذف {count} مرفق(ات)؟',
             
             # New features - Search History
@@ -1707,6 +1776,11 @@ class TranslationManager:
             'settings_font_scale': 'حجم الخط',
             'settings_color_blind': 'وضع عمى الألوان',
             'settings_none': 'لا شيء',
+            'settings_protanopia': 'عمى الأحمر',
+            'settings_deuteranopia': 'عمى الأخضر',
+            'settings_tritanopia': 'عمى الأزرق',
+            'settings_points': 'نقطة',
+            'settings_seconds': 'ثانية',
             'settings_keyboard': 'إمكانية الوصول بلوحة المفاتيح',
             'settings_keyboard_hints': 'إظهار اختصارات لوحة المفاتيح',
             'settings_focus_indicator': 'مؤشر التركيز المحسن',
@@ -1818,6 +1892,12 @@ class TranslationManager:
             
             # Validation
             'msg_no_entries_to_validate': 'لا توجد إدخالات للتحقق منها',
+            'msg_select_column_to_print': 'يرجى تحديد عمود واحد على الأقل للطباعة.',
+            'msg_file_saved_success': 'تم حفظ الملف بنجاح',
+            'msg_deleted_records': 'تم حذف {count} سجل(سجلات)',
+            'msg_updated_records': 'تم تحديث {count} سجل(سجلات)',
+            'msg_invalid_entries_count': 'تحذير: {count} غير صالح: {entries}',
+            'msg_valid_entries_count': 'صالح: جميع الإدخالات {count}',
             
             # Performance monitor
             'perf_avg_query_time': 'متوسط وقت الاستعلام',
@@ -1851,7 +1931,8 @@ class TranslationManager:
             pass
     
     def tr(self, key: str, **kwargs) -> str:
-        """Translate a key"""
+        """Translate a key, honoring an optional fallback/default value."""
+        fallback = kwargs.pop('default', None)
         if self.current_language in self.TRANSLATIONS:
             translations = self.TRANSLATIONS[self.current_language]
             if key in translations:
@@ -1859,10 +1940,10 @@ class TranslationManager:
                 if kwargs:
                     try:
                         return text.format(**kwargs)
-                    except:
+                    except (KeyError, IndexError, ValueError):
                         return text
                 return text
-        return key
+        return fallback if fallback is not None else key
     
     def get_available_languages(self):
         """Get list of available language codes"""

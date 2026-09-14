@@ -314,15 +314,15 @@ class SourcesTab(BaseTableTab):
             
             # Build statistics message
             stats = f"""
-📊 {self.translator.tr('stats_sources_title')}
+{self.translator.tr('stats_sources_title')}
 
 {self.translator.tr('stats_total')}: {total}
 
 {self.translator.tr('stats_by_type')}:
-{chr(10).join(f'  • {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(types.items(), key=lambda x: -x[1])[:10])}
+{chr(10).join(f'  {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(types.items(), key=lambda x: -x[1])[:10])}
 
 {self.translator.tr('stats_by_country')}:
-{chr(10).join(f'  • {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(countries.items(), key=lambda x: -x[1])[:10])}
+{chr(10).join(f'  {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(countries.items(), key=lambda x: -x[1])[:10])}
 
 {self.translator.tr('stats_avg_importance')}: {avg_importance:.1f}%
 """

@@ -7,6 +7,7 @@ import json
 import shutil
 import hashlib
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
@@ -53,7 +54,7 @@ class BackupRestoreManager:
             Tuple of (success, backup_path, backup_info)
         """
         try:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
             backup_filename = f"backup_{backup_type.lower()}_{timestamp}.sqlite"
             backup_path = self.backup_dir / backup_filename
             
@@ -67,25 +68,33 @@ class BackupRestoreManager:
             if not success:
                 return False, "", {'error': 'Failed to create backup'}
             
-            # Calculate backup size
-            backup_size = backup_path.stat().st_size
-            
-            # Calculate checksum
-            checksum = self._calculate_checksum(backup_path)
-            
-            # Encrypt if enabled
+            # Encrypt first, then calculate metadata for the file that is
+            # actually handed to the user. Previously encrypted backups were
+            # recorded with the plaintext size/checksum, making verification
+            # impossible during restore.
+            is_encrypted = False
             if self.encryption_enabled:
                 encrypted_path = self._encrypt_backup(backup_path)
-                if encrypted_path:
-                    backup_path = encrypted_path
+                if not encrypted_path:
+                    try:
+                        backup_path.unlink(missing_ok=True)
+                    except TypeError:  # Python versions without missing_ok
+                        if backup_path.exists():
+                            backup_path.unlink()
+                    return False, "", {'error': 'Failed to encrypt backup'}
+                backup_path = encrypted_path
+                is_encrypted = True
+
+            backup_size = backup_path.stat().st_size
+            checksum = self._calculate_checksum(backup_path)
             
-            # Record backup in database
+            # Record backup metadata for the final file.
             backup_info = {
                 'backup_type': backup_type,
                 'backup_path': str(backup_path),
                 'backup_size': backup_size,
-                'tables_backed_up': tables,
-                'is_encrypted': self.encryption_enabled,
+                'tables_backed_up': list(tables),
+                'is_encrypted': is_encrypted,
                 'checksum': checksum,
                 'status': 'SUCCESS',
                 'created_at': datetime.now().isoformat()
@@ -116,8 +125,17 @@ class BackupRestoreManager:
             if not backup_path.exists():
                 return False, f"Backup file not found: {backup_path}"
             
-            # Decrypt if encrypted
+            # Look up metadata using the user-selected file before any
+            # decryption changes its path. Verify encrypted bytes before
+            # decrypting, then clean up the temporary plaintext file.
+            original_path = backup_path
+            backup_info = self._get_backup_info(original_path)
+            decrypted_path = None
             if backup_path.suffix == '.enc':
+                if backup_info and backup_info.get('checksum'):
+                    actual_checksum = self._calculate_checksum(backup_path)
+                    if actual_checksum != backup_info['checksum']:
+                        return False, "Backup file checksum mismatch - file may be corrupted"
                 decrypted_path = self._decrypt_backup(backup_path)
                 if not decrypted_path:
                     return False, "Failed to decrypt backup"
@@ -125,29 +143,36 @@ class BackupRestoreManager:
             elif backup_path.suffix not in ['.sqlite', '.db']:
                 # If it's a .sql file, it's an old format backup
                 return False, "Old format backup files (.sql) are not supported. Please use .sqlite format."
-            
-            # Verify checksum
-            backup_info = self._get_backup_info(backup_path)
-            if backup_info:
-                expected_checksum = backup_info.get('checksum')
-                if expected_checksum:
+            else:
+                # Plaintext backups can be verified directly.
+                if backup_info and backup_info.get('checksum'):
                     actual_checksum = self._calculate_checksum(backup_path)
-                    if actual_checksum != expected_checksum:
+                    if actual_checksum != backup_info['checksum']:
                         return False, "Backup file checksum mismatch - file may be corrupted"
             
-            # Restore or merge SQLite backup
+            try:
+                # Restore or merge SQLite backup
+                if merge:
+                    success = self._merge_sqlite_backup(backup_path)
+                else:
+                    success = self._restore_sqlite_backup(backup_path, backup_info)
+            finally:
+                if decrypted_path and decrypted_path.exists():
+                    try:
+                        decrypted_path.unlink()
+                    except OSError:
+                        logger.warning(f"Could not remove temporary decrypted backup: {decrypted_path}")
+
             if merge:
-                success = self._merge_sqlite_backup(backup_path)
                 if success:
-                    logger.info(f"Backup merged: {backup_path}")
-                    return True, f"Backup merged successfully from {backup_path}"
+                    logger.info(f"Backup merged: {original_path}")
+                    return True, f"Backup merged successfully from {original_path}"
                 else:
                     return False, "Failed to merge backup"
             else:
-                success = self._restore_sqlite_backup(backup_path)
                 if success:
-                    logger.info(f"Backup restored: {backup_path}")
-                    return True, f"Backup restored successfully from {backup_path}"
+                    logger.info(f"Backup restored: {original_path}")
+                    return True, f"Backup restored successfully from {original_path}"
                 else:
                     return False, "Failed to restore backup"
         
@@ -203,7 +228,13 @@ class BackupRestoreManager:
                 return False, "File not found", None
             
             if path.suffix == '.enc':
-                # Encrypted - we can't preview without decrypting
+                # Encrypted - preview counts require the key, but integrity
+                # can still be checked against recorded ciphertext metadata.
+                info = self._get_backup_info(path)
+                if info and info.get('checksum'):
+                    actual_checksum = self._calculate_checksum(path)
+                    if actual_checksum != info['checksum']:
+                        return False, "Backup file checksum mismatch - file may be corrupted", None
                 return True, "", {'encrypted': True, 'file_size': path.stat().st_size}
             
             if path.suffix not in ['.sqlite', '.db']:
@@ -279,16 +310,22 @@ class BackupRestoreManager:
             return []
     
     def delete_backup(self, backup_path: str) -> Tuple[bool, str]:
-        """Delete a backup file"""
+        """Delete a backup file inside the configured backup directory."""
         try:
             backup_path = Path(backup_path)
-            
-            if not backup_path.exists():
+            backup_root = self.backup_dir.resolve()
+            try:
+                backup_path.resolve().relative_to(backup_root)
+            except (OSError, ValueError):
+                return False, "Refusing to delete a file outside the backup directory"
+            if not backup_path.name.startswith('backup_'):
+                return False, "Invalid backup filename"
+            if backup_path.suffix not in {'.sqlite', '.db', '.enc'}:
+                return False, "Invalid backup file format"
+            if not backup_path.is_file():
                 return False, "Backup file not found"
             
-            # Delete file
             backup_path.unlink()
-            
             return True, "Backup deleted successfully"
         
         except Exception as e:
@@ -318,7 +355,17 @@ class BackupRestoreManager:
             return 0
     
     def _create_sqlite_backup(self, backup_path: Path, tables: List[str]) -> bool:
-        """Create SQLite backup using SQLite backup API"""
+        """Create SQLite backup using SQLite backup API.
+
+        The schema is always copied so the result remains a valid SQLite
+        database. When a subset is requested, rows from unselected tables are
+        removed from the copy rather than ignoring the request.
+        """
+        allowed_tables = {'sources', 'contents', 'content_analysis'}
+        requested_tables = set(tables or [])
+        if not requested_tables or not requested_tables.issubset(allowed_tables):
+            logger.error(f"Invalid backup table selection: {tables}")
+            return False
         try:
             source_db = DatabaseConfig.get_db_path()
             
@@ -333,6 +380,16 @@ class BackupRestoreManager:
             
             # Use SQLite backup API for online backup
             source_conn.backup(backup_conn)
+
+            # A selective backup keeps the complete schema but contains rows
+            # only for the requested tables. Disable FK checks while clearing
+            # the copy because an intentionally partial backup may contain
+            # dangling references by design.
+            if requested_tables != allowed_tables:
+                backup_conn.execute("PRAGMA foreign_keys = OFF")
+                for table in allowed_tables - requested_tables:
+                    backup_conn.execute(f"DELETE FROM {table}")
+                backup_conn.commit()
             
             backup_conn.close()
             source_conn.close()
@@ -350,6 +407,13 @@ class BackupRestoreManager:
                 source_db = DatabaseConfig.get_db_path()
                 if Path(source_db).exists():
                     shutil.copy2(source_db, backup_path)
+                    if requested_tables != allowed_tables:
+                        partial_conn = sqlite3.connect(str(backup_path))
+                        partial_conn.execute("PRAGMA foreign_keys = OFF")
+                        for table in allowed_tables - requested_tables:
+                            partial_conn.execute(f"DELETE FROM {table}")
+                        partial_conn.commit()
+                        partial_conn.close()
                     # Reconnect
                     DatabaseConfig.get_connection()
                     return True
@@ -362,9 +426,20 @@ class BackupRestoreManager:
                     pass
             return False
     
-    def _restore_sqlite_backup(self, backup_path: Path) -> bool:
-        """Restore SQLite backup by replacing database file"""
+    def _restore_sqlite_backup(self, backup_path: Path, backup_info: Optional[Dict] = None) -> bool:
+        """Restore a SQLite backup.
+
+        Full backups replace the database file. Selective backups retain the
+        current database and replace only the tables listed in metadata; this
+        makes the public ``tables`` argument safe to use instead of silently
+        restoring an empty copy of every unselected table.
+        """
         try:
+            selected_tables = (backup_info or {}).get('tables_backed_up')
+            all_tables = {'sources', 'contents', 'content_analysis'}
+            if selected_tables and set(selected_tables) != all_tables:
+                return self._restore_selected_tables(backup_path, list(selected_tables))
+
             # Close existing connection
             DatabaseConfig.close_connection()
             
@@ -389,6 +464,95 @@ class BackupRestoreManager:
             logger.error(f"Error restoring SQLite backup: {e}")
             return False
     
+    def _restore_selected_tables(self, backup_path: Path, tables: List[str]) -> bool:
+        """Replace selected tables without cascading into unselected data.
+
+        A selection that would delete rows from an unselected dependent table
+        is rejected atomically instead of allowing SQLite's ON DELETE CASCADE
+        to silently remove those rows.
+        """
+        allowed = {'sources', 'contents', 'content_analysis'}
+        selected = set(tables)
+        if not selected or not selected.issubset(allowed):
+            return False
+
+        backup_conn = None
+        current_conn = None
+        try:
+            backup_conn = sqlite3.connect(str(backup_path))
+            backup_conn.row_factory = sqlite3.Row
+            current_conn = DatabaseConfig.get_connection()
+            current_conn.execute("PRAGMA foreign_keys = ON")
+            current_cursor = current_conn.cursor()
+            backup_cursor = backup_conn.cursor()
+
+            # Replacing a parent while leaving a dependent table unselected
+            # would trigger ON DELETE CASCADE and silently destroy data that
+            # the user explicitly chose to keep. Refuse those ambiguous
+            # selections before making any changes; callers can select the
+            # complete dependency closure for an atomic replacement.
+            dependency_tables = {
+                'sources': ('contents',),
+                'contents': ('content_analysis',),
+            }
+            for parent, dependents in dependency_tables.items():
+                if parent not in selected:
+                    continue
+                for dependent in dependents:
+                    if dependent not in selected:
+                        current_cursor.execute(
+                            f"SELECT 1 FROM {dependent} LIMIT 1"
+                        )
+                        if current_cursor.fetchone() is not None:
+                            raise ValueError(
+                                f"Cannot replace {parent} without selecting "
+                                f"dependent table {dependent}"
+                            )
+
+            # Foreign-key-safe replacement order. All selected dependents are
+            # cleared before their selected parents.
+            for table in ('content_analysis', 'contents', 'sources'):
+                if table in selected:
+                    current_cursor.execute(f"DELETE FROM {table}")
+
+            # Build inserts in dependency order.  Coordinate aliases are
+            # supported for older backup files.
+            for table in ('sources', 'contents', 'content_analysis'):
+                if table not in selected:
+                    continue
+                backup_cursor.execute(f"PRAGMA table_info({table})")
+                backup_columns = [row[1] for row in backup_cursor.fetchall()]
+                current_cursor.execute(f"PRAGMA table_info({table})")
+                current_columns = [row[1] for row in current_cursor.fetchall()]
+                pairs = []
+                for target_column in current_columns:
+                    source_column = target_column
+                    if target_column == 'list_coordinates' and 'list_coordinates' not in backup_columns:
+                        source_column = 'coordinates'
+                    if source_column in backup_columns:
+                        pairs.append((target_column, source_column))
+                if not pairs:
+                    raise ValueError(f"No compatible columns found for {table}")
+
+                backup_cursor.execute(f"SELECT {', '.join(source for _, source in pairs)} FROM {table}")
+                rows = backup_cursor.fetchall()
+                target_sql = ', '.join(target for target, _ in pairs)
+                placeholders = ', '.join('?' for _ in pairs)
+                insert_sql = f"INSERT INTO {table} ({target_sql}) VALUES ({placeholders})"
+                for row in rows:
+                    current_cursor.execute(insert_sql, tuple(row[source] for _, source in pairs))
+
+            current_conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error restoring selected backup tables: {e}")
+            if current_conn:
+                current_conn.rollback()
+            return False
+        finally:
+            if backup_conn:
+                backup_conn.close()
+
     def _merge_sqlite_backup(self, backup_path: Path) -> bool:
         """Merge SQLite backup data into current database. Uses transaction; rolls back on failure."""
         backup_conn = None
@@ -716,15 +880,26 @@ class BackupRestoreManager:
             
             fernet = Fernet(key.encode())
             
-            decrypted_path = encrypted_path.with_suffix('.sqlite')
+            fd, temp_name = tempfile.mkstemp(
+                prefix=f".{encrypted_path.stem}_decrypted_",
+                suffix='.sqlite',
+                dir=str(encrypted_path.parent)
+            )
+            os.close(fd)
+            decrypted_path = Path(temp_name)
             
-            with open(encrypted_path, 'rb') as f:
-                decrypted_data = fernet.decrypt(f.read())
-            
-            with open(decrypted_path, 'wb') as f:
-                f.write(decrypted_data)
-            
-            return decrypted_path
+            try:
+                with open(encrypted_path, 'rb') as f:
+                    decrypted_data = fernet.decrypt(f.read())
+                with open(decrypted_path, 'wb') as f:
+                    f.write(decrypted_data)
+                return decrypted_path
+            except Exception:
+                try:
+                    decrypted_path.unlink()
+                except OSError:
+                    pass
+                raise
         
         except ImportError:
             logger.warning("cryptography library not available, decryption skipped")
@@ -758,7 +933,22 @@ class BackupRestoreManager:
             if metadata_file.exists():
                 with open(metadata_file, 'r', encoding='utf-8') as f:
                     metadata = json.load(f)
-                    return metadata.get(str(backup_path))
+                    candidates = [
+                        str(backup_path),
+                        str(Path(backup_path).resolve()),
+                        str(Path(backup_path).absolute()),
+                    ]
+                    for candidate in candidates:
+                        if candidate in metadata:
+                            return metadata[candidate]
+                    # Older metadata may have used a relative path while the
+                    # current process is using an absolute one.
+                    for stored_path, info in metadata.items():
+                        try:
+                            if Path(stored_path).resolve() == Path(backup_path).resolve():
+                                return info
+                        except (OSError, RuntimeError):
+                            continue
             return None
         except Exception as e:
             logger.error(f"Error getting backup info: {e}")

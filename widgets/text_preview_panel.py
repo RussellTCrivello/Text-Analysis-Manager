@@ -7,10 +7,11 @@ from PyQt5.QtWidgets import (
     QPushButton, QScrollArea, QFrame, QSplitter, QGroupBox,
     QSizePolicy
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
 from PyQt5.QtGui import QFont, QColor, QPalette
 from translations.translations import TranslationManager
 from styles.styles import AppStyles
+from icons.icon_manager import get_icon
 
 
 class TextPreviewPanel(QWidget):
@@ -55,8 +56,10 @@ class TextPreviewPanel(QWidget):
         self.title_label = QLabel(self.translator.tr('lbl_full_text_preview'))
         self.title_label.setStyleSheet(AppStyles.get_component_style('preview_title'))
         
-        # Toggle button
-        self.toggle_btn = QPushButton("▼")
+        # Toggle button uses graphical chevrons rather than text glyphs.
+        self.toggle_btn = QPushButton()
+        self.toggle_btn.setIcon(get_icon('chevron_up', 18))
+        self.toggle_btn.setIconSize(QSize(18, 18))
         self.toggle_btn.setFixedSize(28, 28)
         self.toggle_btn.setStyleSheet(AppStyles.get_component_style('preview_toggle'))
         self.toggle_btn.clicked.connect(self.toggle_panel)
@@ -167,7 +170,8 @@ class TextPreviewPanel(QWidget):
         
         # Collapse panel by default
         self.content_frame.setVisible(False)
-        self.toggle_btn.setText("▲")
+        self.toggle_btn.setIcon(get_icon('chevron_up', 18))
+        self.toggle_btn.setIconSize(QSize(18, 18))
         
         # Show placeholder
         self.show_placeholder()
@@ -221,7 +225,10 @@ class TextPreviewPanel(QWidget):
         """Toggle panel expansion"""
         self.is_expanded = not self.is_expanded
         self.content_frame.setVisible(self.is_expanded)
-        self.toggle_btn.setText("▼" if self.is_expanded else "▲")
+        self.toggle_btn.setIcon(get_icon(
+            'chevron_down' if self.is_expanded else 'chevron_up', 18
+        ))
+        self.toggle_btn.setIconSize(QSize(18, 18))
         
         if self.is_expanded:
             self.setMinimumHeight(250)
@@ -239,7 +246,6 @@ class TextPreviewPanel(QWidget):
         # Set placeholder in primary text
         self.primary_group.text_edit.setHtml(f"""
             <div style="text-align: center; color: #95A5A6; padding: 20px;">
-                <p style="font-size: 12pt;">📋</p>
                 <p>{placeholder_text}</p>
             </div>
         """)

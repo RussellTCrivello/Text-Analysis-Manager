@@ -138,7 +138,9 @@ class BulkOperationsDialog(QDialog):
         
         controls.addStretch()
         
-        self.selection_count_label = QLabel("0 selected")
+        self.selection_count_label = QLabel(
+            self.translator.tr('bulk_selected_count', count=0)
+        )
         controls.addWidget(self.selection_count_label)
         
         layout.addLayout(controls)
@@ -285,7 +287,9 @@ class BulkOperationsDialog(QDialog):
                         self.selected_ids.append(record_id)
                         count += 1
         
-        self.selection_count_label.setText(f"{count} selected")
+        self.selection_count_label.setText(
+            self.translator.tr('bulk_selected_count', count=count)
+        )
     
     def browse_import_file(self):
         """Browse for import file"""
@@ -379,8 +383,11 @@ class BulkOperationsDialog(QDialog):
                 updates[col_key] = value
         
         if not updates:
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "No fields to update")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('bulk_no_fields_update')
+            )
             return
         
         self.progress.setVisible(True)
@@ -423,8 +430,11 @@ class BulkOperationsDialog(QDialog):
         """Execute bulk import"""
         filepath = self.import_file_path.text()
         if not filepath or filepath == "No file selected":
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "Please select a file to import")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('bulk_select_file')
+            )
             return
         
         # Import logic (similar to existing import functions)

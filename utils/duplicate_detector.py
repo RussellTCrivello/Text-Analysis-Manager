@@ -51,10 +51,13 @@ class DuplicateDetector:
         if excluded_fields is None:
             excluded_fields = DuplicateDetector.EXCLUDED_FIELDS
         
-        # Get all fields from both records
-        all_fields = set(record1.keys()) | set(record2.keys())
+        # Compare the fields supplied by the candidate record.  New-record
+        # payloads intentionally omit generated columns such as id and
+        # timestamps; comparing the union of keys would make every such
+        # candidate look different from an existing row.
+        all_fields = set(record1.keys()) - excluded_fields
         
-        # Check each field (except excluded ones)
+        # Check each candidate field (except excluded ones)
         for field in all_fields:
             if field in excluded_fields:
                 continue

@@ -3,6 +3,7 @@ Base Table Tab - Foundation for all data management tabs
 Provides common functionality while allowing page-specific customization
 """
 import csv
+import os
 from datetime import datetime
 from typing import Optional, Dict, List
 
@@ -32,7 +33,12 @@ class SimpleTableWidget(QTableWidget):
         # Add row number column at the beginning
         self.columns = [('#', '#', 50)] + list(columns)
         self.data = []
+        # ``filtered_data`` is the complete result set after search/date
+        # filtering. ``display_data`` is only the current page. Keeping these
+        # separate prevents export/report actions from silently exporting one
+        # visible page instead of all matching records.
         self.filtered_data = []
+        self.display_data = []
         
         self.setup_table()
     
@@ -69,8 +75,9 @@ class SimpleTableWidget(QTableWidget):
     
     def load_data(self, data: List[Dict]):
         """Load data into table"""
-        self.data = data
-        self.filtered_data = data
+        self.data = list(data or [])
+        self.filtered_data = self.data.copy()
+        self.display_data = self.data.copy()
         self._start_row_num = 1  # Default starting row number
         self.refresh_display()
     
@@ -82,12 +89,12 @@ class SimpleTableWidget(QTableWidget):
         """Refresh table display with full text and row numbers"""
         self.setSortingEnabled(False)
         self.setRowCount(0)
-        self.setRowCount(len(self.filtered_data))
+        self.setRowCount(len(self.display_data))
         
         # Get starting row number (for pagination)
         start_row_num = getattr(self, '_start_row_num', 1)
         
-        for row_idx, row_data in enumerate(self.filtered_data):
+        for row_idx, row_data in enumerate(self.display_data):
             # Add row number in first column (reflects actual position in full data)
             actual_row_num = start_row_num + row_idx
             row_num_item = QTableWidgetItem(str(actual_row_num))
@@ -113,7 +120,7 @@ class SimpleTableWidget(QTableWidget):
         self.setSortingEnabled(True)
         
         # Automatically select first row if data exists to show preview by default
-        if len(self.filtered_data) > 0:
+        if len(self.display_data) > 0:
             from PyQt5.QtCore import QTimer
             # Use QTimer to select after table is fully rendered
             QTimer.singleShot(50, lambda: self._select_first_row())
@@ -162,7 +169,7 @@ class SimpleTableWidget(QTableWidget):
     def filter_data(self, search_term: str = ""):
         """Filter data by search term"""
         if not search_term:
-            self.filtered_data = self.data
+            self.filtered_data = self.data.copy()
         else:
             self.filtered_data = []
             search_lower = search_term.lower()
@@ -171,6 +178,7 @@ class SimpleTableWidget(QTableWidget):
                       for val in row.values() if val is not None):
                     self.filtered_data.append(row)
         
+        self.display_data = self.filtered_data.copy()
         self.refresh_display()
     
     def export_to_csv(self, filename: str, selected_columns: Optional[List[tuple]] = None):
@@ -188,6 +196,7 @@ class SimpleTableWidget(QTableWidget):
                     writer = csv.DictWriter(f, fieldnames=self.filtered_data[0].keys())
                     writer.writeheader()
                     writer.writerows(self.filtered_data)
+        return True
 
 
 class BaseTableTab(QWidget):
@@ -376,8 +385,9 @@ class BaseTableTab(QWidget):
     def on_selection_changed(self):
         """Handle table selection change to update preview"""
         current_row = self.data_table.currentRow()
-        if current_row >= 0 and current_row < len(self.data_table.filtered_data):
-            row_data = self.data_table.filtered_data[current_row]
+        display_data = getattr(self.data_table, 'display_data', self.data_table.filtered_data)
+        if current_row >= 0 and current_row < len(display_data):
+            row_data = display_data[current_row]
             self.preview_panel.update_preview(row_data)
         else:
             self.preview_panel.clear_preview()
@@ -437,7 +447,10 @@ class BaseTableTab(QWidget):
                 filtered.append(row)
             self.data_table.filtered_data = filtered
         
-        # Store full filtered data for pagination (before slicing)
+        # ``filtered_data`` remains the complete result set. Pagination only
+        # changes ``display_data`` so downstream exports and reports see every
+        # matching row.
+        self.data_table.display_data = self.data_table.filtered_data.copy()
         self._full_filtered_data = self.data_table.filtered_data.copy()
         
         # Update pagination with filtered data count
@@ -464,8 +477,9 @@ class BaseTableTab(QWidget):
         # Set starting row number for correct row display
         self.data_table.set_start_row_num(start + 1)
         
-        # Set filtered_data for display
-        self.data_table.filtered_data = paginated_data
+        # Keep the complete filtered set intact for export/report actions;
+        # only the display set is paginated.
+        self.data_table.display_data = paginated_data
         self.data_table.refresh_display()
         
         # Update status with correct counts
@@ -478,11 +492,12 @@ class BaseTableTab(QWidget):
         of_text = self.translator.tr('pagination_of') if hasattr(self.translator, 'tr') else 'of'
         records_text = self.translator.tr('lbl_records') if hasattr(self.translator, 'tr') else 'records'
         
+        range_text = f"{start + 1}-{start + page_count}" if page_count else "0-0"
         if total_filtered < total_count:
             # Filtered view
-            self.status_label.setText(f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_filtered} ({total_count} {records_text})")
+            self.status_label.setText(f"{showing_text} {range_text} {of_text} {total_filtered} ({total_count} {records_text})")
         else:
-            self.status_label.setText(f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_count} {records_text}")
+            self.status_label.setText(f"{showing_text} {range_text} {of_text} {total_count} {records_text}")
     
     def on_page_changed(self, page: int):
         """Handle page change"""
@@ -530,6 +545,7 @@ class BaseTableTab(QWidget):
             # Initialize full filtered data with all data
             self._full_filtered_data = self.data_table.data.copy()
             self.data_table.filtered_data = self.data_table.data.copy()
+            self.data_table.display_data = self.data_table.data.copy()
             
             # Reset pagination to first page
             self.pagination.current_page = 1
@@ -615,9 +631,10 @@ class BaseTableTab(QWidget):
             return
         
         try:
+            success = False
             if export_format == ExportPreviewDialog.FORMAT_EXCEL:
                 from utils.excel_export import export_to_excel
-                export_to_excel(
+                success = export_to_excel(
                     data,
                     self.columns,
                     filepath,
@@ -629,11 +646,11 @@ class BaseTableTab(QWidget):
                 )
             
             elif export_format == ExportPreviewDialog.FORMAT_CSV:
-                self._export_csv_data(filepath, data, selected_columns)
+                success = self._export_csv_data(filepath, data, selected_columns)
             
             elif export_format == ExportPreviewDialog.FORMAT_WORD:
                 from utils.word_export import export_table_data_to_word_timeline_style
-                export_table_data_to_word_timeline_style(
+                success = export_table_data_to_word_timeline_style(
                     data,
                     filepath,
                     self.translator,
@@ -643,7 +660,7 @@ class BaseTableTab(QWidget):
                 )
             
             elif export_format == ExportPreviewDialog.FORMAT_PDF:
-                self._export_pdf_data(filepath, data, selected_columns, column_widths)
+                success = self._export_pdf_data(filepath, data, selected_columns, column_widths)
             
             elif export_format == ExportPreviewDialog.FORMAT_JSON:
                 from utils.json_xml_export import export_to_json
@@ -655,7 +672,7 @@ class BaseTableTab(QWidget):
                         if col_key in row:
                             filtered_row[col_key] = row[col_key]
                     filtered_data.append(filtered_row)
-                export_to_json(filtered_data, filepath)
+                success = export_to_json(filtered_data, filepath)
             
             elif export_format == ExportPreviewDialog.FORMAT_XML:
                 from utils.json_xml_export import export_to_xml
@@ -667,7 +684,7 @@ class BaseTableTab(QWidget):
                         if col_key in row:
                             filtered_row[col_key] = row[col_key]
                     filtered_data.append(filtered_row)
-                export_to_xml(filtered_data, filepath, root_name=self.table_name, record_name='record')
+                success = export_to_xml(filtered_data, filepath, root_name=self.table_name, record_name='record')
             
             elif export_format == ExportPreviewDialog.FORMAT_JSON_LINES:
                 from utils.json_xml_export import export_to_json_lines
@@ -679,7 +696,12 @@ class BaseTableTab(QWidget):
                         if col_key in row:
                             filtered_row[col_key] = row[col_key]
                     filtered_data.append(filtered_row)
-                export_to_json_lines(filtered_data, filepath)
+                success = export_to_json_lines(filtered_data, filepath)
+            else:
+                raise ValueError(f"Unsupported export format: {export_format}")
+
+            if not success or not os.path.isfile(filepath) or os.path.getsize(filepath) == 0:
+                raise IOError(f"Export did not create a valid output file: {filepath}")
             
             # Show success message
             QMessageBox.information(
@@ -719,6 +741,7 @@ class BaseTableTab(QWidget):
                 for row in data:
                     filtered_row = {key: row.get(key, '') for key in fieldnames}
                     writer.writerow(filtered_row)
+        return True
     
     def _export_pdf_data(self, filepath: str, data: List[Dict], columns: List[tuple], column_widths: Dict[str, int] = None):
         """Export data to PDF file with Arabic support"""
@@ -768,6 +791,9 @@ class BaseTableTab(QWidget):
         
         doc.setHtml(html)
         print_document_with_page_numbers(doc, printer, settings)
+        if not os.path.isfile(filepath) or os.path.getsize(filepath) == 0:
+            raise IOError(f"PDF output was not created: {filepath}")
+        return True
     
     def export_word(self):
         """Export to Word in timeline-style format (not table format)"""
@@ -809,7 +835,7 @@ class BaseTableTab(QWidget):
             )
             
             if filename:
-                export_table_data_to_word_timeline_style(
+                success = export_table_data_to_word_timeline_style(
                     self.data_table.filtered_data,
                     filename,
                     self.translator,
@@ -817,6 +843,8 @@ class BaseTableTab(QWidget):
                     selected_columns=selected_columns,
                     include_header=True
                 )
+                if not success or not os.path.isfile(filename):
+                    raise IOError(f"Word output was not created: {filename}")
                 QMessageBox.information(
                     self,
                     self.translator.tr('msg_success'),
@@ -855,8 +883,11 @@ class BaseTableTab(QWidget):
         col_widths = dialog.get_column_widths()
         
         if not selected_cols:
-            QMessageBox.warning(self, self.translator.tr('msg_warning'),
-                              "Please select at least one column to print.")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning'),
+                self.translator.tr('msg_select_column_to_print')
+            )
             return
         
         try:
@@ -969,6 +1000,8 @@ class BaseTableTab(QWidget):
                 
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, settings)
+                if not os.path.isfile(filename) or os.path.getsize(filename) == 0:
+                    raise IOError(f"PDF output was not created: {filename}")
                 
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                        f"{self.translator.tr('report_export_success')}\n{filename}")
@@ -1013,7 +1046,9 @@ class BaseTableTab(QWidget):
         
         if filename:
             try:
-                self.data_table.export_to_csv(filename, selected_columns)
+                success = self.data_table.export_to_csv(filename, selected_columns)
+                if not success or not os.path.isfile(filename) or os.path.getsize(filename) == 0:
+                    raise IOError(f"CSV output was not created: {filename}")
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                       f"{self.translator.tr('msg_data_exported_to')}:\n{filename}")
             except Exception as e:
@@ -1058,7 +1093,7 @@ class BaseTableTab(QWidget):
         if filename:
             try:
                 from utils.excel_export import export_to_excel
-                export_to_excel(
+                success = export_to_excel(
                     self.data_table.filtered_data,
                     self.columns,
                     filename,
@@ -1067,6 +1102,8 @@ class BaseTableTab(QWidget):
                     include_all_fields=True,
                     selected_columns=selected_columns
                 )
+                if not success or not os.path.isfile(filename):
+                    raise IOError(f"Excel output was not created: {filename}")
                 QMessageBox.information(
                     self,
                     self.translator.tr('msg_success'),
@@ -1113,8 +1150,9 @@ class BaseTableTab(QWidget):
             results = dialog.get_results()
             if results:
                 # Update data table with search results
-                self.data_table.data = results
-                self.data_table.filtered_data = results
+                self.data_table.data = list(results)
+                self.data_table.filtered_data = list(results)
+                self.data_table.display_data = list(results)
                 self.pagination.set_total_items(len(results))
                 self.apply_pagination()
     

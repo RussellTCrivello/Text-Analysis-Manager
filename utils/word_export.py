@@ -750,19 +750,19 @@ def export_timeline_to_word(events: List[Dict], file_path: str, translator: Tran
         classification = event.get('classification', '')
         
         if people:
-            people_run = meta_para.add_run(f"👤 {str(people)[:50]} ")
+            people_run = meta_para.add_run(f"People: {str(people)[:50]} ")
             set_run_font(people_run, is_rtl)
             people_run.font.size = Pt(config['font_meta'])
             people_run.font.color.rgb = docx_rgb(52, 152, 219)
         
         if places:
-            places_run = meta_para.add_run(f"📍 {str(places)[:50]} ")
+            places_run = meta_para.add_run(f"Places: {str(places)[:50]} ")
             set_run_font(places_run, is_rtl)
             places_run.font.size = Pt(config['font_meta'])
             places_run.font.color.rgb = docx_rgb(231, 76, 60)
         
         if classification:
-            class_run = meta_para.add_run(f"🏷️ {classification} ")
+            class_run = meta_para.add_run(f"Classification: {classification} ")
             set_run_font(class_run, is_rtl)
             class_run.font.size = Pt(config['font_meta'])
             class_run.font.color.rgb = docx_rgb(155, 89, 182)
@@ -774,7 +774,7 @@ def export_timeline_to_word(events: List[Dict], file_path: str, translator: Tran
             if is_rtl:
                 set_rtl_paragraph(source_para, True)
             
-            source_run = source_para.add_run(f"📰 {source}")
+            source_run = source_para.add_run(f"Source: {source}")
             set_run_font(source_run, is_rtl)
             source_run.font.size = Pt(config['font_meta'])
             source_run.font.italic = True
@@ -987,7 +987,7 @@ def export_table_data_to_word_timeline_style(
             if 'list_names_people' in selected_keys or 'people' in selected_keys:
                 people = entry.get('list_names_people', '') or entry.get('people', '')
                 if people:
-                    people_run = meta_para.add_run(f"👤 {str(people)[:50]} ")
+                    people_run = meta_para.add_run(f"People: {str(people)[:50]} ")
                     set_run_font(people_run, is_rtl)
                     people_run.font.size = Pt(config['font_meta'])
                     people_run.font.color.rgb = docx_rgb(52, 152, 219)
@@ -1004,7 +1004,7 @@ def export_table_data_to_word_timeline_style(
                     if city or country:
                         places = ", ".join(filter(None, [city, country]))
                 if places:
-                    places_run = meta_para.add_run(f"📍 {str(places)[:50]} ")
+                    places_run = meta_para.add_run(f"Places: {str(places)[:50]} ")
                     set_run_font(places_run, is_rtl)
                     places_run.font.size = Pt(config['font_meta'])
                     places_run.font.color.rgb = docx_rgb(231, 76, 60)
@@ -1017,7 +1017,7 @@ def export_table_data_to_word_timeline_style(
             if 'classification' in selected_keys:
                 classification = entry.get('classification', '')
                 if classification:
-                    class_run = meta_para.add_run(f"🏷️ {classification} ")
+                    class_run = meta_para.add_run(f"Classification: {classification} ")
                     set_run_font(class_run, is_rtl)
                     class_run.font.size = Pt(config['font_meta'])
                     class_run.font.color.rgb = docx_rgb(155, 89, 182)
@@ -1027,7 +1027,7 @@ def export_table_data_to_word_timeline_style(
             if 'type' in selected_keys or 'source_type' in selected_keys:
                 type_val = entry.get('type', '') or entry.get('source_type', '')
                 if type_val:
-                    type_run = meta_para.add_run(f"📋 {str(type_val)[:50]} ")
+                    type_run = meta_para.add_run(f"Type: {str(type_val)[:50]} ")
                     set_run_font(type_run, is_rtl)
                     type_run.font.size = Pt(config['font_meta'])
                     type_run.font.color.rgb = docx_rgb(52, 73, 94)
@@ -1041,7 +1041,7 @@ def export_table_data_to_word_timeline_style(
                     try:
                         imp_val = float(importance) * 100 if isinstance(importance, (int, float)) else str(importance)
                         imp_str = f"{imp_val:.0f}%" if isinstance(imp_val, float) else str(imp_val)
-                        imp_run = meta_para.add_run(f"⭐ {imp_str} ")
+                        imp_run = meta_para.add_run(f"Importance: {imp_str} ")
                         set_run_font(imp_run, is_rtl)
                         imp_run.font.size = Pt(config['font_meta'])
                         imp_run.font.color.rgb = docx_rgb(241, 196, 15)
@@ -1061,7 +1061,7 @@ def export_table_data_to_word_timeline_style(
                             if len(display_value) > 100:
                                 display_value = display_value[:97] + "..."
                             
-                            field_run = meta_para.add_run(f"• {header}: {display_value} ")
+                            field_run = meta_para.add_run(f"{header}: {display_value} ")
                             set_run_font(field_run, is_rtl)
                             field_run.font.size = Pt(config['font_meta'] - 1)
                             field_run.font.color.rgb = docx_rgb(127, 140, 141)
@@ -1075,7 +1075,7 @@ def export_table_data_to_word_timeline_style(
                     if is_rtl:
                         set_rtl_paragraph(source_para, True)
                     
-                    source_run = source_para.add_run(f"📰 {source}")
+                    source_run = source_para.add_run(f"Source: {source}")
                     set_run_font(source_run, is_rtl)
                     source_run.font.size = Pt(config['font_meta'])
                     source_run.font.italic = True

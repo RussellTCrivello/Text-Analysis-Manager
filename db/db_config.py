@@ -188,7 +188,16 @@ class DatabaseConfig:
                 CONSTRAINT chk_contents_importance_range CHECK (importance >= 0.0 AND importance <= 1.0)
             )
             """)
-            
+
+            # Migrate databases created by older releases before creating
+            # indexes or executing CRUD queries. CREATE TABLE IF NOT EXISTS
+            # does not add columns to an existing SQLite table.
+            contents_columns = {
+                row[1] for row in cursor.execute("PRAGMA table_info(contents)").fetchall()
+            }
+            if 'title' not in contents_columns:
+                cursor.execute("ALTER TABLE contents ADD COLUMN title TEXT NULL")
+
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_contents_sources_id ON contents (sources_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_contents_title ON contents (title)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_contents_date_content ON contents (date_content DESC)")
@@ -211,6 +220,17 @@ class DatabaseConfig:
                 FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE CASCADE
             )
             """)
+
+            analysis_columns = {
+                row[1] for row in cursor.execute("PRAGMA table_info(content_analysis)").fetchall()
+            }
+            if 'list_coordinates' not in analysis_columns:
+                cursor.execute("ALTER TABLE content_analysis ADD COLUMN list_coordinates TEXT NULL")
+                if 'coordinates' in analysis_columns:
+                    cursor.execute(
+                        "UPDATE content_analysis SET list_coordinates = coordinates "
+                        "WHERE list_coordinates IS NULL"
+                    )
             
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_content_analysis_content_id ON content_analysis (content_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_content_analysis_classification ON content_analysis (classification)")
