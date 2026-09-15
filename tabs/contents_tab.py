@@ -140,12 +140,16 @@ class ContentsTab(BaseTableTab):
             data = DatabaseManager.get_all_contents()
             self.data_table.load_data(data)
             
-            # Initialize pagination with full data
+            # Preserve the user's page when possible; deleting the last row
+            # clamps naturally to the new final page.
             self._full_filtered_data = data.copy()
-            self.pagination.current_page = 1
+            previous_page = self.pagination.current_page
             self.pagination.set_total_items(len(data))
+            self.pagination.current_page = min(previous_page, self.pagination.total_pages)
+            self.pagination.page_spin.setValue(self.pagination.current_page)
             self.apply_pagination()
         except Exception as e:
+            self._set_table_state('error', str(e), recoverable=True)
             QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
     
     def add_record(self):

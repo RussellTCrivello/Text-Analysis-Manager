@@ -11,6 +11,7 @@ from db.db_manager import DatabaseManager
 from dialogs.dialogs import ContentAnalysisDialog
 from translations.translations import TranslationManager
 from utils.logger import get_logger
+from utils.table_ui import configure_table, set_item_with_tooltip
 
 logger = get_logger(__name__)
 
@@ -138,12 +139,16 @@ class ContentAnalysisTab(BaseTableTab):
             data = DatabaseManager.get_all_content_analysis()
             self.data_table.load_data(data)
             
-            # Initialize pagination with full data
+            # Preserve the user's page when possible; deleting the last row
+            # clamps naturally to the new final page.
             self._full_filtered_data = data.copy()
-            self.pagination.current_page = 1
+            previous_page = self.pagination.current_page
             self.pagination.set_total_items(len(data))
+            self.pagination.current_page = min(previous_page, self.pagination.total_pages)
+            self.pagination.page_spin.setValue(self.pagination.current_page)
             self.apply_pagination()
         except Exception as e:
+            self._set_table_state('error', str(e), recoverable=True)
             QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
     
     def add_record(self):
@@ -350,6 +355,11 @@ class ContentAnalysisTab(BaseTableTab):
             
             # Create comparison table
             table = QTableWidget()
+            table.setObjectName('analysisComparisonTable')
+            configure_table(table, multi_select=True)
+            table.setAccessibleName(self.translator.tr(
+                'btn_compare', default='Analysis comparison'
+            ))
             fields = [
                 self.translator.tr('lbl_id'),
                 self.translator.tr('lbl_classification'),
@@ -360,24 +370,44 @@ class ContentAnalysisTab(BaseTableTab):
             ]
             table.setColumnCount(len(fields))
             table.setHorizontalHeaderLabels(fields)
-            table.setRowCount(min(len(data), 10))  # Limit to 10 for comparison
-            
-            for row_idx, row_data in enumerate(data[:10]):
-                def display_value(key, limit=None):
-                    value = row_data.get(key, '')
-                    text = '' if value is None else str(value)
-                    return text[:limit] if limit else text
-
-                table.setItem(row_idx, 0, QTableWidgetItem(display_value('id')))
-                table.setItem(row_idx, 1, QTableWidgetItem(display_value('classification')))
-                table.setItem(row_idx, 2, QTableWidgetItem(display_value('list_names_people', 50)))
-                table.setItem(row_idx, 3, QTableWidgetItem(display_value('list_names_places', 50)))
-                table.setItem(row_idx, 4, QTableWidgetItem(display_value('coordinates', 30)))
-                table.setItem(row_idx, 5, QTableWidgetItem(display_value('list_sides', 50)))
-            
-            table.resizeColumnsToContents()
             layout.addWidget(table)
-            
+
+            from widgets.pagination_widget import PaginationWidget
+            comparison_pagination = PaginationWidget(self.translator, dialog)
+            comparison_pagination.page_size = min(comparison_pagination.page_size, 25)
+            comparison_pagination.page_size_combo.setCurrentText(str(comparison_pagination.page_size))
+            comparison_pagination.set_total_items(len(data))
+            layout.addWidget(comparison_pagination)
+
+            def render_comparison_page(_page=None):
+                start, end = comparison_pagination.get_page_range()
+                page_data = data[start:end]
+                table.setRowCount(len(page_data))
+                for row_idx, row_data in enumerate(page_data):
+                    def display_value(key, limit=None):
+                        value = row_data.get(key, '')
+                        text = '' if value is None else str(value)
+                        return text[:limit] if limit else text
+
+                    values = [
+                        display_value('id'), display_value('classification'),
+                        display_value('list_names_people', 50), display_value('list_names_places', 50),
+                        display_value('coordinates', 30), display_value('list_sides', 50)
+                    ]
+                    full_values = [
+                        display_value('id'), display_value('classification'),
+                        display_value('list_names_people'), display_value('list_names_places'),
+                        display_value('coordinates'), display_value('list_sides')
+                    ]
+                    for col_idx, (value, full_value) in enumerate(zip(values, full_values)):
+                        set_item_with_tooltip(table, row_idx, col_idx, value).setToolTip(full_value)
+                    table.setRowHeight(row_idx, 38)
+                table.resizeColumnsToContents()
+
+            comparison_pagination.page_changed.connect(render_comparison_page)
+            comparison_pagination.page_size_changed.connect(render_comparison_page)
+            render_comparison_page()
+
             btn_close = QPushButton(self.translator.tr('btn_close'))
             btn_close.clicked.connect(dialog.accept)
             layout.addWidget(btn_close)

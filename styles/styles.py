@@ -486,6 +486,104 @@ class AppStyles:
             color: {c['TEXT_SECONDARY']};
             opacity: 0.6;
         }}
+
+        /* ==================== Table workspace actions ==================== */
+        QPushButton#toolbarActionButton {{
+            background-color: {c['WHITE']};
+            color: {c['TEXT_PRIMARY']};
+            border: 1px solid {c['BORDER']};
+            border-radius: 7px;
+            padding: 6px 10px;
+            min-height: 36px;
+            font-size: {cls.FONT_SIZE}pt;
+            font-weight: 600;
+        }}
+        QPushButton#toolbarActionButton:hover:enabled {{
+            background-color: {c['LIGHT_BG']};
+            border-color: {c['ACCENT']};
+            color: {c['TEXT_PRIMARY']};
+        }}
+        QPushButton#toolbarActionButton:pressed:enabled {{
+            background-color: {c['ACCENT']};
+            color: #FFFFFF;
+        }}
+        QPushButton#toolbarActionButton:focus {{
+            border: 2px solid {c['BORDER_FOCUS']};
+            padding: 5px 9px;
+        }}
+        QPushButton#toolbarActionButton[iconOnly="true"] {{
+            padding: 6px;
+            min-width: 38px;
+        }}
+        QPushButton#toolbarActionButton:disabled {{
+            background-color: {c['LIGHT_BG']};
+            color: {c['TEXT_MUTED']};
+            border-color: {c['BORDER']};
+        }}
+        QToolButton#toolbarMoreButton {{
+            background-color: transparent;
+            color: {c['TEXT_SECONDARY']};
+            border: 1px solid transparent;
+            border-radius: 7px;
+            padding: 6px 10px;
+            min-height: 36px;
+            font-weight: 600;
+        }}
+        QToolButton#toolbarMoreButton:hover {{
+            background-color: {c['LIGHT_BG']};
+            border-color: {c['BORDER']};
+            color: {c['TEXT_PRIMARY']};
+        }}
+        QToolButton#toolbarMoreButton:focus {{
+            border: 2px solid {c['BORDER_FOCUS']};
+        }}
+        QMenu#tableMoreMenu {{
+            background-color: {c['MENU_BG']};
+            color: {c['TEXT_PRIMARY']};
+            border: 1px solid {c['BORDER']};
+            padding: 4px;
+        }}
+        QMenu#tableMoreMenu::item {{
+            padding: 8px 28px 8px 12px;
+            border-radius: 4px;
+        }}
+        QMenu#tableMoreMenu::item:selected {{
+            background-color: {c['ACCENT']};
+            color: #FFFFFF;
+        }}
+        QFrame#toolbarGroupSeparator {{
+            color: {c['BORDER']};
+        }}
+        QLabel#toolbarGroupLabel {{
+            color: {c['TEXT_SECONDARY']};
+            font-size: {cls.FONT_SIZE_SMALL}pt;
+            font-weight: 700;
+            padding: 0 2px;
+        }}
+        QPushButton#reportToolbarAction {{
+            background-color: {c['WHITE']};
+            color: {c['TEXT_PRIMARY']};
+            border: 1px solid {c['BORDER']};
+            border-radius: 7px;
+            padding: 6px 10px;
+            min-height: 36px;
+            font-weight: 600;
+        }}
+        QPushButton#reportToolbarAction:hover:enabled {{
+            background-color: {c['LIGHT_BG']};
+            border-color: {c['ACCENT']};
+        }}
+        QPushButton#reportToolbarAction:focus {{
+            border: 2px solid {c['BORDER_FOCUS']};
+        }}
+        QPushButton#reportToolbarAction:disabled {{
+            color: {c['TEXT_MUTED']};
+            background-color: {c['LIGHT_BG']};
+        }}
+        QScrollArea#reportToolbarScroller {{
+            background-color: transparent;
+            border: none;
+        }}
         
         QPushButton[class="danger"] {{
             background-color: {c['DANGER']};
@@ -574,6 +672,23 @@ class AppStyles:
             font-family: {font_family};
             font-weight: 600;
             font-size: {cls.FONT_SIZE}pt;
+        }}
+        QTableWidget:focus {{
+            border: 2px solid {c['BORDER_FOCUS']};
+        }}
+        QMenu#tableContextMenu {{
+            background-color: {c['MENU_BG']};
+            color: {c['TEXT_PRIMARY']};
+            border: 1px solid {c['BORDER']};
+            padding: 4px;
+        }}
+        QMenu#tableContextMenu::item {{
+            padding: 8px 28px 8px 12px;
+            border-radius: 4px;
+        }}
+        QMenu#tableContextMenu::item:selected {{
+            background-color: {c['ACCENT']};
+            color: #FFFFFF;
         }}
         
         /* ==================== Input Fields (8px Grid System) ==================== */
@@ -2746,6 +2861,37 @@ class AppStyles:
                     font-family: {font_family};
                 }}
             """,
+
+            'table_result_summary': f"""
+                QLabel {{
+                    color: {c['TEXT_SECONDARY']};
+                    font-size: 10px;
+                    font-weight: 600;
+                    padding: 2px 4px 4px 4px;
+                    font-family: {font_family};
+                }}
+            """,
+
+            'table_state': f"""
+                QLabel {{
+                    background-color: {c['LIGHT_BG']};
+                    color: {c['TEXT_SECONDARY']};
+                    border: 1px solid {c['BORDER']};
+                    border-radius: 6px;
+                    padding: 12px 16px;
+                    font-size: 10px;
+                    font-weight: 600;
+                    font-family: {font_family};
+                }}
+                QLabel[state="error"] {{
+                    color: {c['DANGER']};
+                    border-color: {c['DANGER']};
+                }}
+                QLabel[state="loading"] {{
+                    color: {c['ACCENT']};
+                    border-color: {c['ACCENT']};
+                }}
+            """,
             
             'toolbar_scroll': f"""
                 QScrollArea {{
@@ -4087,17 +4233,54 @@ class AppStyles:
                 border: 1px solid {c['BORDER']};
             }}
             
+            /* Adaptive page numbers */
+            #pageNumberButton {{
+                background-color: {c['WHITE']};
+                color: {c['TEXT_SECONDARY']};
+                border: 1px solid {c['BORDER']};
+                border-radius: 6px;
+                min-width: 36px;
+                min-height: {indicator_height}px;
+                max-width: 36px;
+                max-height: {indicator_height}px;
+                padding: 0px;
+                font-size: {small_font}px;
+                font-weight: 600;
+            }}
+            #pageNumberButton:hover:enabled {{
+                background-color: {c['LIGHT_BG']};
+                color: {c['TEXT_PRIMARY']};
+                border-color: {accent_color};
+            }}
+            #pageNumberButton:focus {{
+                border: 2px solid {c['BORDER_FOCUS']};
+            }}
+            #pageNumberButton:checked {{
+                background-color: {accent_color};
+                color: #FFFFFF;
+                border-color: {accent_color};
+            }}
+            #pageNumberButton:disabled {{
+                background-color: {c['LIGHT_BG']};
+                color: {c['TEXT_MUTED']};
+            }}
+            #pageEllipsis {{
+                color: {c['TEXT_MUTED']};
+                font-size: {base_font}px;
+                font-weight: 700;
+            }}
+
             /* Page Indicator Label - Compact Pill */
             #pageIndicatorButton {{
-                background-color: {accent_color};
-                color: white;
+                background-color: transparent;
+                color: {c['TEXT_SECONDARY']};
                 border: none;
-                border-radius: {indicator_height // 2}px;
-                font-size: {base_font}px;
+                border-radius: 6px;
+                font-size: {small_font}px;
                 font-weight: 600;
-                padding: 0px 20px;
+                padding: 0px 6px;
                 min-height: {indicator_height}px;
-                min-width: 120px;
+                min-width: 82px;
             }}
             
             /* Modern SpinBox - Compact */

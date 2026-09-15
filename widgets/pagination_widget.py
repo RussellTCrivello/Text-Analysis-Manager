@@ -41,12 +41,27 @@ class CircularNavButton(QPushButton):
 
 
 class PageIndicatorLabel(QLabel):
-    """Compact page indicator with pill shape."""
-    
+    """Compact page indicator that supplements the numbered page buttons."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("pageIndicatorButton")
         self.setAlignment(Qt.AlignCenter)
+        self.setAccessibleName("Current page")
+
+
+class PageNumberButton(QPushButton):
+    """Keyboard-accessible page button used in the adaptive page sequence."""
+
+    def __init__(self, page: int, parent=None):
+        super().__init__(str(page), parent)
+        self.page = page
+        self.setObjectName("pageNumberButton")
+        self.setCheckable(True)
+        self.setFixedSize(36, 36)
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setAccessibleName(f"Page {page}")
+        self.setFocusPolicy(Qt.StrongFocus)
 
 
 class ModernPageSpinBox(QSpinBox):
@@ -87,7 +102,9 @@ class PaginationWidget(QWidget):
         except (TypeError, ValueError, OSError):
             pass
         self.total_items = 0
-        self.total_pages = 0
+        # Keep a single disabled page visible for the empty state; the range
+        # remains the authoritative "Showing 0–0 of 0" count.
+        self.total_pages = 1
         
         # Apply RTL/LTR direction based on current language
         self.is_rtl = self.translator.current_language == 'ar'
@@ -130,6 +147,7 @@ class PaginationWidget(QWidget):
         # LEFT: Records info - ensure full text display
         self.records_label = QLabel()
         self.records_label.setObjectName("recordsInfoLabel")
+        self.records_label.setAccessibleName("Result range")
         self.records_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.records_label.setMinimumWidth(150)  # Ensure enough width for full text
         self.records_label.setFixedHeight(36)  # Fixed height for consistent alignment
@@ -137,51 +155,54 @@ class PaginationWidget(QWidget):
         
         container_layout.addStretch()
         
-        # CENTER: Navigation controls
+        # CENTER: semantic navigation plus an adaptive page-number sequence
         nav_layout = QHBoxLayout()
-        nav_layout.setSpacing(AppStyles.get_spacing(1))  # 8px - 8px grid spacing
-        nav_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
-        
+        nav_layout.setSpacing(AppStyles.get_spacing(1))
+        nav_layout.setAlignment(Qt.AlignVCenter)
+
         # Directional icons follow the semantic action in both LTR and RTL.
         first_icon = 'btn_page_last' if self.is_rtl else 'btn_page_first'
         previous_icon = 'btn_page_next' if self.is_rtl else 'btn_page_prev'
         next_icon = 'btn_page_prev' if self.is_rtl else 'btn_page_next'
         last_icon = 'btn_page_first' if self.is_rtl else 'btn_page_last'
 
-        # First page button
-        self.btn_first = CircularNavButton(first_icon, "")
+        self.btn_first = CircularNavButton(first_icon)
         self.btn_first.setFixedSize(BTN_SIZE, BTN_SIZE)
         self.btn_first.clicked.connect(self.go_to_first)
         nav_layout.addWidget(self.btn_first, alignment=Qt.AlignVCenter)
-        
-        # Previous button
-        self.btn_prev = CircularNavButton(previous_icon, "")
+
+        self.btn_prev = CircularNavButton(previous_icon)
         self.btn_prev.setFixedSize(BTN_SIZE, BTN_SIZE)
         self.btn_prev.clicked.connect(self.go_to_previous)
         nav_layout.addWidget(self.btn_prev, alignment=Qt.AlignVCenter)
-        
-        # Page indicator - ensure full text display
+
+        self.page_numbers_layout = QHBoxLayout()
+        self.page_numbers_layout.setSpacing(4)
+        self.page_numbers_layout.setContentsMargins(0, 0, 0, 0)
+        self.page_number_buttons = []
+        nav_layout.addLayout(self.page_numbers_layout)
+
         self.page_indicator = PageIndicatorLabel()
         self.page_indicator.setFixedHeight(INDICATOR_HEIGHT)
-        self.page_indicator.setMinimumWidth(150)  # Wider to show "Page X of Y" fully
+        self.page_indicator.setMinimumWidth(82)
+        self.page_indicator.setMaximumWidth(110)
+        self.page_indicator.setToolTip("Current page")
         nav_layout.addWidget(self.page_indicator, alignment=Qt.AlignVCenter)
-        
-        # Next button
-        self.btn_next = CircularNavButton(next_icon, "")
+
+        self.btn_next = CircularNavButton(next_icon)
         self.btn_next.setFixedSize(BTN_SIZE, BTN_SIZE)
         self.btn_next.clicked.connect(self.go_to_next)
         nav_layout.addWidget(self.btn_next, alignment=Qt.AlignVCenter)
-        
-        # Last page button
-        self.btn_last = CircularNavButton(last_icon, "")
+
+        self.btn_last = CircularNavButton(last_icon)
         self.btn_last.setFixedSize(BTN_SIZE, BTN_SIZE)
         self.btn_last.clicked.connect(self.go_to_last)
         nav_layout.addWidget(self.btn_last, alignment=Qt.AlignVCenter)
-        
+
         container_layout.addLayout(nav_layout)
-        
+
         container_layout.addStretch()
-        
+
         # RIGHT: Page size selector
         right_section = QHBoxLayout()
         right_section.setSpacing(AppStyles.get_spacing(1))  # 8px - 8px grid spacing
@@ -191,6 +212,8 @@ class PaginationWidget(QWidget):
         self.page_spin = ModernPageSpinBox()
         self.page_spin.setMinimum(1)
         self.page_spin.setMaximum(1)
+        self.page_spin.setAccessibleName("Page number")
+        self.page_spin.setToolTip("Enter page number")
         self.page_spin.setFixedSize(SPIN_WIDTH, BTN_SIZE)
         self.page_spin.valueChanged.connect(self.on_page_changed)
         right_section.addWidget(self.page_spin, alignment=Qt.AlignVCenter)
@@ -198,6 +221,7 @@ class PaginationWidget(QWidget):
         # Items per page label - ensure full text display
         self.items_per_page_label = QLabel()
         self.items_per_page_label.setObjectName("itemsPerPageLabel")
+        self.items_per_page_label.setAccessibleName("Rows per page")
         self.items_per_page_label.setMinimumWidth(100)  # Ensure enough width for translated text
         self.items_per_page_label.setFixedHeight(BTN_SIZE)  # Fixed height for consistent alignment
         right_section.addWidget(self.items_per_page_label, alignment=Qt.AlignVCenter)
@@ -206,6 +230,8 @@ class PaginationWidget(QWidget):
         self.page_size_combo = ModernPageSizeCombo()
         self.page_size_combo.addItems(['25', '50', '100', '200', '500'])
         self.page_size_combo.setCurrentText(str(self.page_size))
+        self.page_size_combo.setAccessibleName("Rows per page")
+        self.page_size_combo.setToolTip("Rows per page")
         self.page_size_combo.setFixedSize(COMBO_WIDTH, BTN_SIZE)
         self.page_size_combo.currentTextChanged.connect(self.on_page_size_changed)
         right_section.addWidget(self.page_size_combo, alignment=Qt.AlignVCenter)
@@ -266,19 +292,84 @@ class PaginationWidget(QWidget):
         self.page_spin.setValue(self.current_page)
         self.page_spin.blockSignals(False)
     
+    @staticmethod
+    def _build_page_sequence(total_pages: int, current_page: int):
+        """Return visible page numbers and ellipsis markers for a large result set."""
+        total_pages = max(1, total_pages)
+        current_page = max(1, min(current_page, total_pages))
+        if total_pages <= 7:
+            return list(range(1, total_pages + 1))
+        if current_page <= 4:
+            return [1, 2, 3, 4, 5, 'ellipsis', total_pages]
+        if current_page >= total_pages - 3:
+            return [1, 'ellipsis', total_pages - 4, total_pages - 3, total_pages - 2, total_pages - 1, total_pages]
+        return [1, 'ellipsis', current_page - 1, current_page, current_page + 1, 'ellipsis', total_pages]
+
+    def _rebuild_page_buttons(self):
+        """Render the adaptive sequence without changing the navigation API."""
+        while self.page_numbers_layout.count():
+            item = self.page_numbers_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.page_number_buttons = []
+
+        page_label = self.translator.tr('pagination_page', default='Page')
+        current_label = self.translator.tr('pagination_current_page', default='Current page')
+        for value in self._build_page_sequence(self.total_pages, self.current_page):
+            if value == 'ellipsis':
+                ellipsis = QLabel('…')
+                ellipsis.setObjectName('pageEllipsis')
+                ellipsis.setAlignment(Qt.AlignCenter)
+                ellipsis.setFixedSize(20, 36)
+                ellipsis.setAccessibleName('Additional pages')
+                self.page_numbers_layout.addWidget(ellipsis, alignment=Qt.AlignVCenter)
+                continue
+            button = PageNumberButton(value)
+            button.setChecked(value == self.current_page)
+            if value == self.current_page:
+                button.setAccessibleName(f'{page_label} {value}, {current_label}')
+            else:
+                button.setAccessibleName(f'{page_label} {value}')
+            button.clicked.connect(lambda checked=False, page=value: self.go_to_page(page))
+            self.page_numbers_layout.addWidget(button, alignment=Qt.AlignVCenter)
+            self.page_number_buttons.append(button)
+
+    def go_to_page(self, page: int):
+        """Navigate directly to a visible page-number button."""
+        if 1 <= page <= self.total_pages and page != self.current_page:
+            self.current_page = page
+            self.page_spin.blockSignals(True)
+            self.page_spin.setValue(page)
+            self.page_spin.blockSignals(False)
+            self.page_changed.emit(page)
+            self.update_display()
+
     def update_display(self):
         """Update pagination display with translations"""
         # Get translated strings
         page_text = self.translator.tr('pagination_page') if hasattr(self.translator, 'tr') else 'Page'
         of_text = self.translator.tr('pagination_of') if hasattr(self.translator, 'tr') else 'of'
         showing_text = self.translator.tr('pagination_showing') if hasattr(self.translator, 'tr') else 'Showing'
-        items_per_page_text = self.translator.tr('pagination_items_per_page') if hasattr(self.translator, 'tr') else 'Items per page'
+        items_per_page_text = self.translator.tr('pagination_items_per_page') if hasattr(self.translator, 'tr') else 'Rows per page'
+        page_number_text = self.translator.tr('pagination_page_number', default='Page number') if hasattr(self.translator, 'tr') else 'Page number'
         
-        # Update page indicator
+        # Update the adaptive page-number sequence and current-page indicator.
+        self._rebuild_page_buttons()
         self.page_indicator.setText(f"{page_text} {self.current_page} {of_text} {self.total_pages}")
+        self.page_indicator.setAccessibleName(
+            f"{self.translator.tr('pagination_current_page', default='Current page')} "
+            f"{self.current_page} {of_text} {self.total_pages}"
+        )
         
-        # Update items per page label
+        # Update items per page label and semantic names after a language change.
         self.items_per_page_label.setText(items_per_page_text)
+        self.items_per_page_label.setAccessibleName(items_per_page_text)
+        self.page_size_combo.setAccessibleName(items_per_page_text)
+        self.page_size_combo.setToolTip(items_per_page_text)
+        self.page_spin.setAccessibleName(page_number_text)
+        self.page_spin.setToolTip(page_number_text)
+        self.records_label.setAccessibleName(showing_text)
         
         # Update records info with range
         start = (self.current_page - 1) * self.page_size + 1 if self.total_items > 0 else 0
@@ -363,6 +454,9 @@ class PaginationWidget(QWidget):
             new_size = int(size_str)
             if new_size != self.page_size:
                 self.page_size = new_size
+                # A new page size changes the result boundaries; restart at
+                # page one so the range and table rows remain predictable.
+                self.current_page = 1
                 self.calculate_pages()
                 self.page_size_changed.emit(new_size)
                 self.update_display()

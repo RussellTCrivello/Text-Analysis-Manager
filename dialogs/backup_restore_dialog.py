@@ -16,6 +16,7 @@ from html import escape
 from utils.backup_restore import BackupRestoreManager
 from translations.translations import TranslationManager
 from utils.logger import get_logger
+from utils.table_ui import configure_table, set_item_with_tooltip
 
 logger = get_logger(__name__)
 
@@ -280,15 +281,29 @@ class BackupRestoreDialog(QDialog):
             self.translator.tr('lbl_date'),
             self.translator.tr('lbl_actions')
         ])
-        self.backup_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.backup_table.setSelectionMode(QTableWidget.SingleSelection)
-        self.backup_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.backup_table.setObjectName('backupTable')
+        configure_table(self.backup_table, multi_select=False)
+        self.backup_table.setAccessibleName(self.translator.tr(
+            'lbl_backup', default='Available backups'
+        ))
         self.backup_table.horizontalHeader().setStretchLastSection(True)
         self.backup_table.setColumnWidth(0, 300)
         self.backup_table.setColumnWidth(1, 100)
         self.backup_table.setColumnWidth(2, 150)
         
         restore_layout.addWidget(self.backup_table)
+        self.backup_state_label = QLabel()
+        self.backup_state_label.setObjectName('tableStateLabel')
+        self.backup_state_label.setAlignment(Qt.AlignCenter)
+        self.backup_state_label.setWordWrap(True)
+        self.backup_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
+        self.backup_state_label.setVisible(False)
+        restore_layout.addWidget(self.backup_state_label)
+        from widgets.pagination_widget import PaginationWidget
+        self.backup_pagination = PaginationWidget(self.translator, self)
+        self.backup_pagination.page_changed.connect(self._render_backups_page)
+        self.backup_pagination.page_size_changed.connect(self._render_backups_page)
+        restore_layout.addWidget(self.backup_pagination)
         
         # Restore buttons - properly aligned with margins to prevent icon cropping
         restore_btn_layout = QHBoxLayout()
@@ -364,45 +379,64 @@ class BackupRestoreDialog(QDialog):
         self.backup_table.selectionModel().selectionChanged.connect(self.on_selection_changed)
     
     def load_backups(self):
-        """Load list of backups"""
+        """Load and page the available backup records."""
         try:
-            backups = self.backup_manager.get_backup_list()
-            self.backup_table.setRowCount(len(backups))
-            
-            for row, backup in enumerate(backups):
-                # Filename
-                filename_item = QTableWidgetItem(backup['filename'])
-                filename_item.setData(Qt.UserRole, backup['path'])
-                self.backup_table.setItem(row, 0, filename_item)
-                
-                # Size
-                size_mb = backup['size'] / (1024 * 1024)
-                size_item = QTableWidgetItem(f"{size_mb:.2f} MB")
-                self.backup_table.setItem(row, 1, size_item)
-                
-                # Date
-                try:
-                    date_obj = datetime.fromisoformat(backup['created_at'])
-                    date_str = date_obj.strftime('%Y-%m-%d %H:%M:%S')
-                except:
-                    date_str = backup['created_at']
-                date_item = QTableWidgetItem(date_str)
-                self.backup_table.setItem(row, 2, date_item)
-                
-                # Encrypted indicator: use an actual icon rather than a
-                # Unicode lock glyph, with an accessible tooltip.
-                encrypted_item = QTableWidgetItem()
-                if backup.get('is_encrypted', False):
-                    encrypted_item.setIcon(get_icon('lock', 18))
-                    encrypted_item.setToolTip(self.translator.tr('backup_preview_encrypted'))
-                    encrypted_item.setData(Qt.AccessibleTextRole, self.translator.tr('backup_preview_encrypted'))
-                self.backup_table.setItem(row, 3, encrypted_item)
-            
-            self.status_label.setText(f"{len(backups)} {self.translator.tr('msg_backups_found').lower()}")
+            self.backups = list(self.backup_manager.get_backup_list() or [])
+            previous_page = self.backup_pagination.current_page
+            self.backup_pagination.set_total_items(len(self.backups))
+            self.backup_pagination.current_page = min(
+                previous_page, self.backup_pagination.total_pages
+            )
+            self.backup_pagination.page_spin.setValue(
+                self.backup_pagination.current_page
+            )
+            self._render_backups_page()
+            self.backup_state_label.setText(
+                self.translator.tr('table_empty', default='No backups are available.')
+            )
+            self.backup_state_label.setVisible(not bool(self.backups))
+            self.on_selection_changed()
+            self.status_label.setText(
+                f"{len(self.backups)} {self.translator.tr('msg_backups_found').lower()}"
+            )
         except Exception as e:
             logger.error(f"Error loading backups: {e}")
+            self.backup_state_label.setText(
+                f"{self.translator.tr('table_error', default='Unable to load backups.')} "
+                f"{self.translator.tr('table_recover', default='Use Refresh to try again.')}"
+            )
+            self.backup_state_label.setVisible(True)
+            self.status_label.setText(self.translator.tr('table_error', default='Unable to load backups.'))
             QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
-    
+
+    def _render_backups_page(self, _page=None):
+        """Render the active backup page without changing restore semantics."""
+        backups = list(getattr(self, 'backups', []) or [])
+        start, end = self.backup_pagination.get_page_range()
+        page_backups = backups[start:end]
+        self.backup_table.setRowCount(len(page_backups))
+        for row, backup in enumerate(page_backups):
+            filename_item = set_item_with_tooltip(
+                self.backup_table, row, 0, backup['filename']
+            )
+            filename_item.setData(Qt.UserRole, backup['path'])
+            size_mb = backup['size'] / (1024 * 1024)
+            set_item_with_tooltip(self.backup_table, row, 1, f"{size_mb:.2f} MB")
+            try:
+                date_obj = datetime.fromisoformat(backup['created_at'])
+                date_str = date_obj.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                date_str = backup['created_at']
+            set_item_with_tooltip(self.backup_table, row, 2, date_str)
+            encrypted_item = QTableWidgetItem()
+            if backup.get('is_encrypted', False):
+                encrypted_item.setIcon(get_icon('lock', 18))
+                encrypted_item.setToolTip(self.translator.tr('backup_preview_encrypted'))
+                encrypted_item.setData(Qt.AccessibleTextRole, self.translator.tr('backup_preview_encrypted'))
+            self.backup_table.setItem(row, 3, encrypted_item)
+        self.backup_table.resizeColumnsToContents()
+        self.backup_table.setColumnWidth(0, 300)
+
     def on_selection_changed(self):
         """Handle table selection change"""
         has_selection = len(self.backup_table.selectedItems()) > 0

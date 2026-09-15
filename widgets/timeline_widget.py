@@ -1588,9 +1588,19 @@ class TimelineWidget(QWidget):
         # Use design system spacing
         timeline_margin = config['section_margin']
         timeline_spacing = config['card_spacing']
-        self.timeline_layout.setContentsMargins(timeline_margin, timeline_margin, 
+        self.timeline_layout.setContentsMargins(timeline_margin, timeline_margin,
                                                timeline_margin, timeline_margin)
         self.timeline_layout.setSpacing(timeline_spacing)
+        self.empty_state_label = QLabel(self.translator.tr(
+            'table_empty', default='No events match the current view.'
+        ))
+        self.empty_state_label.setObjectName('timelineEmptyState')
+        self.empty_state_label.setAlignment(Qt.AlignCenter)
+        self.empty_state_label.setWordWrap(True)
+        self.empty_state_label.setMinimumHeight(64)
+        self.empty_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
+        self.empty_state_label.setVisible(False)
+        self.timeline_layout.addWidget(self.empty_state_label)
         self.timeline_layout.addStretch()
         
         timeline_wrapper_layout.addWidget(self.timeline_container, 1)
@@ -2079,15 +2089,24 @@ class TimelineWidget(QWidget):
         zoomed_spacing = int(config['card_spacing'] * self.zoom_factor)
         
         # Update timeline container spacing with zoom
-        self.timeline_layout.setContentsMargins(zoomed_margin, zoomed_margin, 
+        self.timeline_layout.setContentsMargins(zoomed_margin, zoomed_margin,
                                                zoomed_margin, zoomed_margin)
         self.timeline_layout.setSpacing(zoomed_spacing)
         
-        # Clear existing widgets
+        # Clear existing event cards while retaining the state label as the
+        # first item. Rebuild the spacer after the page cards so it does not
+        # push cards below an empty stretch on every refresh.
         while self.timeline_layout.count() > 1:
-            item = self.timeline_layout.takeAt(0)
+            item = self.timeline_layout.takeAt(1)
             if item.widget():
                 item.widget().deleteLater()
+
+        if hasattr(self, 'empty_state_label'):
+            self.empty_state_label.setVisible(not bool(self.filtered_events))
+            self.empty_state_label.setText(self.translator.tr(
+                'table_empty', default='No events match the current view.'
+            ))
+        self.timeline_layout.addStretch()
         
         # Create widgets only for current page (pagination prevents freezing)
         for event in self.filtered_events:

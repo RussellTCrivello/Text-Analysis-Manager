@@ -22,6 +22,7 @@ from PyQt5.QtGui import QColor, QFont
 from translations.translations import TranslationManager
 from styles.styles import AppStyles
 from utils.logger import get_logger
+from utils.table_ui import configure_table, set_item_with_tooltip
 from utils.error_handler import ErrorHandler, AppError, ErrorSeverity, ErrorCategory
 from db.db_manager import DatabaseManager
 from icons.icon_manager import get_icon
@@ -273,12 +274,27 @@ class ImportPreviewDialog(QDialog):
         self.validation_summary = QLabel()
         self.validation_summary.setStyleSheet(AppStyles.get_component_style('validation_summary'))
         preview_layout.addWidget(self.validation_summary)
+        self.preview_state_label = QLabel()
+        self.preview_state_label.setObjectName('tableStateLabel')
+        self.preview_state_label.setAlignment(Qt.AlignCenter)
+        self.preview_state_label.setWordWrap(True)
+        self.preview_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
+        self.preview_state_label.setVisible(False)
+        preview_layout.addWidget(self.preview_state_label)
         
         # Preview table
         self.preview_table = QTableWidget()
-        self.preview_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.preview_table.setAlternatingRowColors(True)
+        self.preview_table.setObjectName('importPreviewTable')
+        configure_table(self.preview_table, multi_select=True)
+        self.preview_table.setAccessibleName(self._tr(
+            'import_preview_table', 'Import validation preview'
+        ))
         preview_layout.addWidget(self.preview_table)
+        from widgets.pagination_widget import PaginationWidget
+        self.preview_pagination = PaginationWidget(self.translator, self)
+        self.preview_pagination.page_changed.connect(self._render_preview_page)
+        self.preview_pagination.page_size_changed.connect(self._render_preview_page)
+        preview_layout.addWidget(self.preview_pagination)
         
         # Validation options
         options_layout = QHBoxLayout()
@@ -589,22 +605,34 @@ class ImportPreviewDialog(QDialog):
         return mapped
     
     def _update_preview_table(self):
-        """Update the preview table with validation results"""
+        """Update validation preview metadata and render its active page."""
         if not self.import_data or not self.validation_results:
+            self.preview_table.setRowCount(0)
+            self.preview_pagination.current_page = 1
+            self.preview_pagination.set_total_items(0)
+            self.preview_state_label.setText(self._tr(
+                'table_empty', 'Load and validate a file to preview records.'
+            ))
+            self.preview_state_label.setVisible(True)
             return
-        
-        # Setup columns
         columns = ['Status'] + list(self.column_mapping.keys())
+        self.preview_state_label.setVisible(False)
         self.preview_table.setColumnCount(len(columns))
         self.preview_table.setHorizontalHeaderLabels(columns)
-        self.preview_table.setRowCount(len(self.import_data))
-        
-        # Populate rows
-        for i, (row, result) in enumerate(zip(self.import_data, self.validation_results)):
-            # Status column
+        self.preview_pagination.current_page = 1
+        self.preview_pagination.set_total_items(len(self.import_data))
+        self._render_preview_page()
+
+    def _render_preview_page(self, _page=None):
+        """Render validation rows for the current page; validation stays complete."""
+        if not self.import_data or not self.validation_results:
+            return
+        start, end = self.preview_pagination.get_page_range()
+        rows = list(zip(self.import_data, self.validation_results))[start:end]
+        self.preview_table.setRowCount(len(rows))
+        for row_idx, (row, result) in enumerate(rows):
             status = result['status']
             status_item = QTableWidgetItem()
-            
             if status == ValidationStatus.VALID:
                 status_item.setIcon(get_icon('validate', 18))
                 status_item.setBackground(QColor('#d4edda'))
@@ -620,23 +648,21 @@ class ImportPreviewDialog(QDialog):
                 status_item.setBackground(QColor('#f8d7da'))
                 status_item.setToolTip('\n'.join(result['errors']))
                 status_item.setData(Qt.AccessibleTextRole, self._tr('import_errors', 'Errors'))
-            
-            self.preview_table.setItem(i, 0, status_item)
-            
-            # Data columns
-            for j, csv_col in enumerate(self.column_mapping.keys()):
+            self.preview_table.setItem(row_idx, 0, status_item)
+
+            for col_idx, csv_col in enumerate(self.column_mapping.keys()):
                 value = row.get(csv_col, '')
-                item = QTableWidgetItem(str(value)[:100])
-                
+                item = set_item_with_tooltip(
+                    self.preview_table, row_idx, col_idx + 1, str(value)[:100]
+                )
+                item.setToolTip(str(value))
                 if status == ValidationStatus.ERROR:
                     item.setBackground(QColor('#f8d7da'))
                 elif status == ValidationStatus.WARNING:
                     item.setBackground(QColor('#fff3cd'))
-                
-                self.preview_table.setItem(i, j + 1, item)
-        
+            self.preview_table.setRowHeight(row_idx, 38)
         self.preview_table.resizeColumnsToContents()
-    
+
     def on_tab_changed(self, index: int):
         """Handle tab change"""
         self.btn_back.setEnabled(index > 0)

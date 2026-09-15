@@ -17,6 +17,7 @@ from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QPushButton, QProgressBar, QGroupBox, QTextEdit
 
 from utils.logger import get_logger
+from utils.table_ui import configure_table, set_item_with_tooltip
 
 logger = get_logger(__name__)
 
@@ -317,6 +318,11 @@ class PerformanceDialog(QDialog):
         queries_layout = QVBoxLayout(queries_group)
         
         self.queries_table = QTableWidget()
+        self.queries_table.setObjectName('performanceQueriesTable')
+        configure_table(self.queries_table, multi_select=True)
+        self.queries_table.setAccessibleName(self._tr(
+            'performance_slow_queries', 'Recent slow queries'
+        ))
         self.queries_table.setColumnCount(4)
         self.queries_table.setHorizontalHeaderLabels([
             self._tr('perf_col_table', 'Table'),
@@ -385,10 +391,11 @@ class PerformanceDialog(QDialog):
         self.queries_table.setRowCount(len(slow_queries))
         
         for i, q in enumerate(slow_queries):
-            self.queries_table.setItem(i, 0, QTableWidgetItem(q.table_name))
-            self.queries_table.setItem(i, 1, QTableWidgetItem(f"{q.execution_time_ms:.0f}"))
-            self.queries_table.setItem(i, 2, QTableWidgetItem(str(q.row_count)))
-            self.queries_table.setItem(i, 3, QTableWidgetItem(q.query[:100]))
+            set_item_with_tooltip(self.queries_table, i, 0, q.table_name)
+            set_item_with_tooltip(self.queries_table, i, 1, f"{q.execution_time_ms:.0f}")
+            set_item_with_tooltip(self.queries_table, i, 2, str(q.row_count))
+            set_item_with_tooltip(self.queries_table, i, 3, q.query[:100]).setToolTip(q.query)
+            self.queries_table.setRowHeight(i, 38)
         
         # Update suggestions
         suggestions = self.monitor.get_optimization_suggestions()
