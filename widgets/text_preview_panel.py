@@ -52,9 +52,14 @@ class TextPreviewPanel(QWidget):
         header_vertical = AppStyles.get_spacing(1)  # 8px vertical
         header_layout.setContentsMargins(header_margin, header_vertical, header_margin, header_vertical)
         
-        # Title label
+        # Title and compact record context keep the collapsed preview useful
+        # without turning the bottom of every table into a dark banner.
         self.title_label = QLabel(self.translator.tr('lbl_full_text_preview'))
-        self.title_label.setStyleSheet(AppStyles.get_component_style('preview_title'))
+        self.title_label.setStyleSheet(AppStyles.get_component_style('text_preview_title'))
+        self.meta_label = QLabel()
+        self.meta_label.setObjectName('previewMeta')
+        self.meta_label.setStyleSheet(AppStyles.get_component_style('preview_meta'))
+        self.meta_label.setVisible(False)
         
         # Toggle button uses graphical chevrons rather than text glyphs.
         self.toggle_btn = QPushButton()
@@ -68,6 +73,7 @@ class TextPreviewPanel(QWidget):
         self.toggle_btn.setAccessibleName(toggle_text)
         
         header_layout.addWidget(self.title_label)
+        header_layout.addWidget(self.meta_label)
         header_layout.addStretch()
         header_layout.addWidget(self.toggle_btn)
         
@@ -166,13 +172,17 @@ class TextPreviewPanel(QWidget):
         
         layout.addWidget(self.content_frame)
         
-        # Set initial size (collapsed by default)
-        self.setMinimumHeight(40)
-        self.setMaximumHeight(40)
+        # Set initial size (collapsed by default). The header's vertical
+        # padding plus the focusable toggle needs a little more than a 40px
+        # strip to avoid clipping the title.
+        self.setMinimumHeight(48)
+        self.setMaximumHeight(48)
+        self.header_frame.setMinimumHeight(46)
         
         # Collapse panel by default
         self.content_frame.setVisible(False)
-        self.toggle_btn.setIcon(get_icon('chevron_up', 18))
+        # Down means "open" while collapsed; up means "collapse" when open.
+        self.toggle_btn.setIcon(get_icon('chevron_down', 18))
         self.toggle_btn.setIconSize(QSize(18, 18))
         
         # Show placeholder
@@ -229,7 +239,7 @@ class TextPreviewPanel(QWidget):
         self.is_expanded = not self.is_expanded
         self.content_frame.setVisible(self.is_expanded)
         self.toggle_btn.setIcon(get_icon(
-            'chevron_down' if self.is_expanded else 'chevron_up', 18
+            'chevron_up' if self.is_expanded else 'chevron_down', 18
         ))
         self.toggle_btn.setIconSize(QSize(18, 18))
         
@@ -237,8 +247,8 @@ class TextPreviewPanel(QWidget):
             self.setMinimumHeight(250)
             self.setMaximumHeight(400)
         else:
-            self.setMinimumHeight(40)
-            self.setMaximumHeight(40)
+            self.setMinimumHeight(48)
+            self.setMaximumHeight(48)
         
         self.toggled.emit(self.is_expanded)
     
@@ -246,12 +256,12 @@ class TextPreviewPanel(QWidget):
         """Show placeholder when no data selected"""
         placeholder_text = self.translator.tr('msg_select_record_to_preview')
         
-        # Set placeholder in primary text
-        self.primary_group.text_edit.setHtml(f"""
-            <div style="text-align: center; color: #95A5A6; padding: 20px;">
-                <p>{placeholder_text}</p>
-            </div>
-        """)
+        # Keep the empty state theme-aware and accessible instead of embedding
+        # a hard-coded HTML color that disappears in dark mode.
+        self.primary_group.text_edit.setPlainText(placeholder_text)
+        self.primary_group.text_edit.setAlignment(Qt.AlignCenter)
+        self.meta_label.clear()
+        self.meta_label.setVisible(False)
         
         # Clear other fields
         for widget in self.field_widgets.values():
@@ -269,6 +279,15 @@ class TextPreviewPanel(QWidget):
             return
         
         self.current_data = data
+        self.primary_group.text_edit.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        record_context = data.get('title') or data.get('content_title') or data.get('name')
+        if record_context:
+            self.meta_label.setText(str(record_context))
+            self.meta_label.setToolTip(str(record_context))
+            self.meta_label.setVisible(True)
+        else:
+            self.meta_label.clear()
+            self.meta_label.setVisible(False)
         
         # Map data keys to display
         # Handle different naming conventions from different tables
@@ -415,7 +434,8 @@ class TextPreviewPanel(QWidget):
         
         # Reapply theme-aware component styles when the user switches theme.
         self.header_frame.setStyleSheet(AppStyles.get_component_style('preview_header'))
-        self.title_label.setStyleSheet(AppStyles.get_component_style('preview_title'))
+        self.title_label.setStyleSheet(AppStyles.get_component_style('text_preview_title'))
+        self.meta_label.setStyleSheet(AppStyles.get_component_style('preview_meta'))
         self.toggle_btn.setStyleSheet(AppStyles.get_component_style('preview_toggle'))
         self.content_frame.setStyleSheet(AppStyles.get_component_style('preview_content'))
         for group, style_name in (

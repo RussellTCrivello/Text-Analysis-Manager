@@ -202,7 +202,7 @@ class ToolbarFactory:
         """Create date filter section"""
         group = QGroupBox(self.translator.tr('lbl_date_filter'))
         group.setStyleSheet(AppStyles.get_component_style('date_filter_group'))
-        group.setMinimumWidth(350)  # Ensure enough width for full text
+        group.setMinimumWidth(420)  # Keep labels and both date values readable
         self.buttons['date_filter_group'] = group
         layout = QHBoxLayout(group)
         # Use 8px grid spacing
@@ -214,7 +214,7 @@ class ToolbarFactory:
 
         # From date - ensure full text display
         from_label = QLabel(self.translator.tr('lbl_date_from') + ":")
-        from_label.setMinimumWidth(50)
+        from_label.setMinimumWidth(64)
         from_label.setStyleSheet(AppStyles.get_component_style('toolbar_label'))
         layout.addWidget(from_label)
         self.buttons['date_from_label'] = from_label
@@ -223,7 +223,7 @@ class ToolbarFactory:
         from_date.setCalendarPopup(True)
         from_date.setDate(QDate.currentDate().addYears(-1))
         from_date.setDisplayFormat("yyyy-MM-dd")
-        from_date.setMinimumWidth(110)
+        from_date.setMinimumWidth(160)
         if 'date_filter_changed' in callbacks:
             from_date.dateChanged.connect(callbacks['date_filter_changed'])
         layout.addWidget(from_date)
@@ -231,7 +231,7 @@ class ToolbarFactory:
 
         # To date - ensure full text display
         to_label = QLabel(self.translator.tr('lbl_date_to') + ":")
-        to_label.setMinimumWidth(40)
+        to_label.setMinimumWidth(64)
         to_label.setStyleSheet(AppStyles.get_component_style('toolbar_label'))
         layout.addWidget(to_label)
         self.buttons['date_to_label'] = to_label
@@ -240,7 +240,7 @@ class ToolbarFactory:
         to_date.setCalendarPopup(True)
         to_date.setDate(QDate.currentDate())
         to_date.setDisplayFormat("yyyy-MM-dd")
-        to_date.setMinimumWidth(110)
+        to_date.setMinimumWidth(160)
         if 'date_filter_changed' in callbacks:
             to_date.dateChanged.connect(callbacks['date_filter_changed'])
         layout.addWidget(to_date)
@@ -268,7 +268,9 @@ class ToolbarFactory:
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setFrameShape(QFrame.NoFrame)
-        scroll_area.setFixedHeight(56)
+        # Two visual tiers (group caption + actions) keep the toolbar legible
+        # without turning every operation into a loud labeled button.
+        scroll_area.setFixedHeight(76)
         scroll_area.setStyleSheet(AppStyles.get_component_style('toolbar_scroll'))
 
         row = QWidget()
@@ -305,13 +307,26 @@ class ToolbarFactory:
 
         if config.show_header_settings:
             layout.addWidget(self._create_group_separator())
+            view_group = QWidget(row)
+            view_layout = QVBoxLayout(view_group)
+            view_layout.setContentsMargins(0, 0, 0, 0)
+            view_layout.setSpacing(2)
+            view_caption = QLabel(self.translator.tr('toolbar_view', default='View'))
+            view_caption.setObjectName('toolbarGroupLabel')
+            self.buttons['toolbar_view_label'] = view_caption
+            view_layout.addWidget(view_caption)
+            view_actions = QWidget(view_group)
+            view_actions_layout = QHBoxLayout(view_actions)
+            view_actions_layout.setContentsMargins(0, 0, 0, 0)
             btn_header = self._create_labeled_action_button(
                 'btn_set_header', 'btn_set_header', self.translator.tr('btn_set_header'),
                 style_class=None, icon_only=True
             )
             if 'set_header' in callbacks:
                 btn_header.clicked.connect(callbacks['set_header'])
-            layout.addWidget(btn_header)
+            view_actions_layout.addWidget(btn_header)
+            view_layout.addWidget(view_actions)
+            layout.addWidget(view_group)
             self.buttons['btn_set_header'] = btn_header
 
         if self.more_menu.actions():
@@ -337,10 +352,20 @@ class ToolbarFactory:
         """Create the high-frequency record actions as a compact group."""
         widget = QWidget(parent)
         widget.setObjectName('toolbarCrudGroup')
-        layout = QHBoxLayout(widget)
+        layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(AppStyles.get_spacing(1))
-        layout.setAlignment(Qt.AlignVCenter)
+        layout.setSpacing(2)
+
+        caption = QLabel(self.translator.tr('toolbar_records', default='Records'))
+        caption.setObjectName('toolbarGroupLabel')
+        self.buttons['toolbar_records_label'] = caption
+        layout.addWidget(caption)
+        action_row = QWidget(widget)
+        action_layout = QHBoxLayout(action_row)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(AppStyles.get_spacing(1))
+        action_layout.setAlignment(Qt.AlignVCenter)
+        layout.addWidget(action_row)
 
         if config.show_add:
             btn_add = self._create_labeled_action_button(
@@ -349,7 +374,7 @@ class ToolbarFactory:
             )
             if 'add' in callbacks:
                 btn_add.clicked.connect(callbacks['add'])
-            layout.addWidget(btn_add)
+            action_layout.addWidget(btn_add)
             self.buttons['btn_add'] = btn_add
 
         if config.show_edit:
@@ -358,7 +383,7 @@ class ToolbarFactory:
             )
             if 'edit' in callbacks:
                 btn_edit.clicked.connect(callbacks['edit'])
-            layout.addWidget(btn_edit)
+            action_layout.addWidget(btn_edit)
             self.buttons['btn_edit'] = btn_edit
 
         if config.show_delete:
@@ -368,7 +393,7 @@ class ToolbarFactory:
             )
             if 'delete' in callbacks:
                 btn_delete.clicked.connect(callbacks['delete'])
-            layout.addWidget(btn_delete)
+            action_layout.addWidget(btn_delete)
             self.buttons['btn_delete'] = btn_delete
 
         if config.show_refresh:
@@ -377,7 +402,7 @@ class ToolbarFactory:
             )
             if 'refresh' in callbacks:
                 btn_refresh.clicked.connect(callbacks['refresh'])
-            layout.addWidget(btn_refresh)
+            action_layout.addWidget(btn_refresh)
             self.buttons['btn_refresh'] = btn_refresh
 
         return widget
@@ -388,10 +413,20 @@ class ToolbarFactory:
         """Create frequent page actions and route advanced work to More."""
         widget = QWidget(parent)
         widget.setObjectName('toolbarContextGroup')
-        layout = QHBoxLayout(widget)
+        layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(AppStyles.get_spacing(1))
-        layout.setAlignment(Qt.AlignVCenter)
+        layout.setSpacing(2)
+
+        caption = QLabel(self.translator.tr('toolbar_workspace', default='Workspace'))
+        caption.setObjectName('toolbarGroupLabel')
+        self.buttons['toolbar_workspace_label'] = caption
+        layout.addWidget(caption)
+        action_row = QWidget(widget)
+        action_layout = QHBoxLayout(action_row)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(AppStyles.get_spacing(1))
+        action_layout.setAlignment(Qt.AlignVCenter)
+        layout.addWidget(action_row)
 
         for btn_config in buttons:
             if not btn_config.visible:
@@ -421,7 +456,7 @@ class ToolbarFactory:
             btn.setEnabled(btn_config.enabled)
             if callback:
                 btn.clicked.connect(callback)
-            layout.addWidget(btn)
+            action_layout.addWidget(btn)
             self.buttons[btn_config.icon_key] = btn
 
         return widget
@@ -436,32 +471,60 @@ class ToolbarFactory:
         button.setProperty('iconName', icon_key)
         button.setProperty('toolbarRole', 'primary' if style_class in {'primary', 'success'} else 'secondary')
         if style_class:
-            button.setStyleSheet(AppStyles.get_button_style(style_class))
-        icon = get_icon(icon_key, 18, use_white=bool(style_class))
+            # Keep the toolbar on the shared stylesheet path. Applying the
+            # legacy dialog button stylesheet inline adds large padding and
+            # overrides the compact toolbar geometry.
+            button.setProperty('toolbarVariant', style_class)
+        icon = get_icon(icon_key, 18, use_white=style_class in {
+            'primary', 'success', 'danger', 'purple', 'warning'
+        })
         if not icon.isNull():
             button.setIcon(icon)
             button.setIconSize(QSize(18, 18))
         if not icon_only:
             button.setText(label)
             button.setProperty('iconOnly', False)
-            button.setMinimumWidth(max(84, len(label) * 7 + 42))
-            button.setFixedHeight(36)
+            button.setFixedWidth(max(96, len(label) * 8 + 50))
+            button.setFixedHeight(38)
         else:
             button.setProperty('iconOnly', True)
-            button.setFixedSize(38, 36)
+            button.setFixedSize(40, 38)
         button.setToolTip(label)
         button.setAccessibleName(label)
+        button.setStyleSheet(AppStyles.get_table_toolbar_action_style(
+            style_class, icon_only, object_name='toolbarActionButton'
+        ))
         button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        # Dynamic-property selectors need a repolish before the widget is
+        # measured; otherwise the generic QPushButton padding wins at startup.
+        button.style().unpolish(button)
+        button.style().polish(button)
+        # Apply geometry after stylesheet polish; Qt style rules can otherwise
+        # replace fixed dimensions with the generic QPushButton size hint.
+        if icon_only:
+            button.setFixedSize(40, 38)
+        else:
+            button.setFixedWidth(max(96, len(label) * 8 + 50))
+            button.setFixedHeight(38)
         return button
 
     def _create_export_section(self, parent: QWidget, config: ToolbarConfig,
                               callbacks: Dict[str, Callable]) -> QWidget:
         """Create export buttons section"""
         widget = QWidget(parent)
-        layout = QHBoxLayout(widget)
+        layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(AppStyles.get_spacing(1))  # 8px - 8px grid (rounding 6px to 8px)
-        layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
+        layout.setSpacing(2)
+        caption = QLabel(self.translator.tr('toolbar_output', default='Output'))
+        caption.setObjectName('toolbarGroupLabel')
+        self.buttons['toolbar_output_label'] = caption
+        layout.addWidget(caption)
+        action_row = QWidget(widget)
+        action_layout = QHBoxLayout(action_row)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(AppStyles.get_spacing(1))
+        action_layout.setAlignment(Qt.AlignVCenter)
+        layout.addWidget(action_row)
 
         # Unified export button (with preview dialog)
         if config.show_export_unified:
@@ -471,7 +534,7 @@ class ToolbarFactory:
             )
             if 'export_unified' in callbacks:
                 btn_export.clicked.connect(callbacks['export_unified'])
-            layout.addWidget(btn_export)
+            action_layout.addWidget(btn_export)
             self.buttons['btn_export_unified'] = btn_export
 
         # Output actions share the same compact icon-only dimensions. The
@@ -498,7 +561,7 @@ class ToolbarFactory:
             )
             if callback_key in callbacks:
                 button.clicked.connect(callbacks[callback_key])
-            layout.addWidget(button)
+            action_layout.addWidget(button)
             self.buttons[button_key] = button
 
         return widget
@@ -537,30 +600,50 @@ class ToolbarFactory:
         """Refresh an action without losing its label/priority treatment."""
         if not button:
             return
+        variant = button.property('toolbarVariant')
+        use_white = variant in {'primary', 'success', 'danger', 'purple', 'warning'}
+        icon = get_icon(icon_key, 18, use_white=use_white)
+        if not icon.isNull():
+            button.setIcon(icon)
+            button.setIconSize(QSize(18, 18))
         if button.property('iconOnly') is False:
-            icon = get_icon(icon_key, 18, use_white=button.property('toolbarRole') == 'primary')
-            if not icon.isNull():
-                button.setIcon(icon)
-                button.setIconSize(QSize(18, 18))
             button.setText(label)
             button.setToolTip(label)
             button.setAccessibleName(label)
-            button.setMinimumWidth(max(84, len(label) * 7 + 42))
-            button.setFixedHeight(36)
+            button.setFixedWidth(max(96, len(label) * 8 + 50))
+            button.setFixedHeight(38)
         else:
-            icon = get_icon(icon_key, 18, use_white=button.property('toolbarRole') == 'primary')
-            if not icon.isNull():
-                button.setIcon(icon)
-                button.setIconSize(QSize(18, 18))
             button.setText('')
             button.setProperty('iconOnly', True)
             button.setToolTip(label)
             button.setAccessibleName(label)
-            button.setFixedSize(38, 36)
+            button.setFixedSize(40, 38)
             button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        button.setStyleSheet(AppStyles.get_table_toolbar_action_style(
+            variant, button.property('iconOnly') is True,
+            object_name='toolbarActionButton'
+        ))
+        button.style().unpolish(button)
+        button.style().polish(button)
+        if button.property('iconOnly') is True:
+            button.setFixedSize(40, 38)
+        else:
+            button.setFixedWidth(max(96, len(label) * 8 + 50))
+            button.setFixedHeight(38)
 
     def refresh_translations(self):
         """Refresh labels, menu actions, direction, and icons after language changes."""
+        group_labels = {
+            'toolbar_records_label': ('toolbar_records', 'Records'),
+            'toolbar_workspace_label': ('toolbar_workspace', 'Workspace'),
+            'toolbar_output_label': ('toolbar_output', 'Output'),
+            'toolbar_view_label': ('toolbar_view', 'View'),
+        }
+        for label_key, (translation_key, fallback) in group_labels.items():
+            label_widget = self.buttons.get(label_key)
+            if label_widget:
+                label_widget.setText(self.translator.tr(translation_key, default=fallback))
+
         button_configs = {
             'btn_add': 'btn_add',
             'btn_edit': 'btn_edit',

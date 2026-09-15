@@ -64,7 +64,7 @@ class AllDataDisplayTab(QWidget):
             ('content_title', translator.tr('lbl_title'), 200),
             ('content_data', translator.tr('lbl_content_data'), 300),
             ('classification', translator.tr('lbl_classification'), 130),
-            ('content_importance', translator.tr('lbl_importance'), 100),
+            ('content_importance', translator.tr('lbl_importance'), 120),
             ('date_content', translator.tr('lbl_date_content'), 150),
             ('content_date_creation', translator.tr('lbl_date_creation'), 150)
         ]
@@ -196,6 +196,26 @@ class AllDataDisplayTab(QWidget):
         table_layout = QVBoxLayout(table_container)
         table_layout.setContentsMargins(0, 0, 0, 0)
         table_layout.setSpacing(0)
+        table_header = QWidget(table_container)
+        table_header.setObjectName('tableSectionHeader')
+        table_header_layout = QHBoxLayout(table_header)
+        table_header_layout.setContentsMargins(12, 8, 12, 8)
+        table_header_layout.setSpacing(8)
+        self.table_section_title = QLabel(
+            self.translator.tr('table_results', default='Results')
+        )
+        self.table_section_title.setObjectName('tableSectionTitle')
+        table_header_layout.addWidget(self.table_section_title)
+        self.table_section_hint = QLabel(
+            self.translator.tr(
+                'table_select_hint',
+                default='Select a row to inspect its details; use Shift or Ctrl for bulk work.'
+            )
+        )
+        self.table_section_hint.setObjectName('tableSectionHint')
+        table_header_layout.addWidget(self.table_section_hint)
+        table_header_layout.addStretch()
+        table_layout.addWidget(table_header, 0)
         self.table_state_label = QLabel()
         self.table_state_label.setObjectName('tableStateLabel')
         self.table_state_label.setAlignment(Qt.AlignCenter)
@@ -248,11 +268,14 @@ class AllDataDisplayTab(QWidget):
         self.pagination.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(self.pagination, 0)
         
-        # Status bar - fixed at bottom, always visible
+        # Keep the status channel for recoverable errors only. Pagination is the
+        # single source of truth for ranges; the summary strip carries totals.
         self.status_label = QLabel(self.translator.tr('msg_ready'))
+        self.status_label.setObjectName('tableStatusMessage')
         self.status_label.setStyleSheet(AppStyles.get_component_style('status_label'))
         self.status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.status_label.setFixedHeight(25)
+        self.status_label.setVisible(False)
         layout.addWidget(self.status_label, 0)
         self._update_action_state()
         self._update_result_summary()
@@ -643,20 +666,11 @@ class AllDataDisplayTab(QWidget):
         
         self.refresh_display()
         
-        # Update status
-        page_count = len(self.page_data)
+        # Pagination owns the range label; keep the secondary status channel
+        # hidden for normal results to avoid duplicate count messaging.
         total_filtered = len(self._full_filtered_data)
-        total_count = len(self.data) if self.data else 0
-        
-        showing_text = self.translator.tr('pagination_showing') if hasattr(self.translator, 'tr') else 'Showing'
-        of_text = self.translator.tr('pagination_of') if hasattr(self.translator, 'tr') else 'of'
-        records_text = self.translator.tr('lbl_records') if hasattr(self.translator, 'tr') else 'records'
-        
-        range_text = f"{start + 1}–{start + page_count}" if page_count else "0–0"
-        if total_filtered < total_count:
-            self.status_label.setText(f"{showing_text} {range_text} {of_text} {total_filtered} ({total_count} {records_text})")
-        else:
-            self.status_label.setText(f"{showing_text} {range_text} {of_text} {total_count} {records_text}")
+        self.status_label.setText(self.translator.tr('msg_ready', default='Ready'))
+        self.status_label.setVisible(False)
         self._set_table_state('empty' if not total_filtered else 'ready')
         self._update_result_summary()
         self._update_action_state()
@@ -1301,7 +1315,7 @@ class AllDataDisplayTab(QWidget):
             ('content_title', self.translator.tr('lbl_title'), 200),
             ('content_data', self.translator.tr('lbl_content_data'), 300),
             ('classification', self.translator.tr('lbl_classification'), 130),
-            ('content_importance', self.translator.tr('lbl_importance'), 100),
+            ('content_importance', self.translator.tr('lbl_importance'), 120),
             ('date_content', self.translator.tr('lbl_date_content'), 150),
             ('content_date_creation', self.translator.tr('lbl_date_creation'), 150)
         ]
@@ -1370,6 +1384,17 @@ class AllDataDisplayTab(QWidget):
         if hasattr(self, 'status_label'):
             self.status_label.setStyleSheet(AppStyles.get_component_style('status_label'))
             self._update_result_summary()
+        if hasattr(self, 'table_section_title'):
+            self.table_section_title.setText(
+                self.translator.tr('table_results', default='Results')
+            )
+        if hasattr(self, 'table_section_hint'):
+            self.table_section_hint.setText(
+                self.translator.tr(
+                    'table_select_hint',
+                    default='Select a row to inspect its details; use Shift or Ctrl for bulk work.'
+                )
+            )
             self.pagination.update_display()
         if hasattr(self, 'btn_quick_view'):
             self.btn_quick_view.setText(self.translator.tr('btn_quick_view'))

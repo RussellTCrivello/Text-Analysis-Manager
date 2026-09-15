@@ -311,6 +311,11 @@ class PaginationWidget(QWidget):
             item = self.page_numbers_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                # Detach immediately as well as scheduling deletion. Repeated
+                # translation/data refreshes otherwise leave an old page
+                # button painting at the origin until the next event cycle.
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
         self.page_number_buttons = []
 

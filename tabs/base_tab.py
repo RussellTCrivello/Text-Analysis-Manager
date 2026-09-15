@@ -388,6 +388,8 @@ class BaseTableTab(QWidget):
         self.selection_bulk_button.setText(self.translator.tr('bulk_operations', default='Bulk operations'))
         self.selection_bulk_button.setToolTip(self.selection_bulk_button.text())
         self.selection_bulk_button.setAccessibleName(self.selection_bulk_button.text())
+        self.selection_bulk_button.setObjectName('selectionPrimaryAction')
+        self.selection_bulk_button.setIcon(get_icon('btn_select_all', 16))
         self.selection_bulk_button.setStyleSheet(AppStyles.get_button_style('primary'))
         self.selection_bulk_button.clicked.connect(self.show_bulk_operations)
         selection_layout.addWidget(self.selection_bulk_button)
@@ -395,12 +397,15 @@ class BaseTableTab(QWidget):
         self.selection_clear_button.setText(self.translator.tr('btn_clear', default='Clear'))
         self.selection_clear_button.setToolTip(self.selection_clear_button.text())
         self.selection_clear_button.setAccessibleName(self.selection_clear_button.text())
+        self.selection_clear_button.setObjectName('selectionClearAction')
+        self.selection_clear_button.setIcon(get_icon('btn_clear', 16))
         self.selection_clear_button.clicked.connect(lambda: self.data_table.clearSelection())
         selection_layout.addWidget(self.selection_clear_button)
         self.selection_action_bar.setVisible(False)
         scroll_layout.addWidget(self.selection_action_bar, 0)
 
-        # Container frame for table area with fixed proportions
+        # Results workspace: a titled surface keeps the data grid, states, and
+        # preview visually distinct from filters and record actions.
         table_container = QFrame()
         table_container.setObjectName('tableWorkspace')
         table_container.setFrameShape(QFrame.NoFrame)
@@ -408,6 +413,27 @@ class BaseTableTab(QWidget):
         table_layout = QVBoxLayout(table_container)
         table_layout.setContentsMargins(0, 0, 0, 0)
         table_layout.setSpacing(0)
+
+        table_header = QWidget(table_container)
+        table_header.setObjectName('tableSectionHeader')
+        table_header_layout = QHBoxLayout(table_header)
+        table_header_layout.setContentsMargins(12, 8, 12, 8)
+        table_header_layout.setSpacing(8)
+        self.table_section_title = QLabel(
+            self.translator.tr('table_results', default='Results')
+        )
+        self.table_section_title.setObjectName('tableSectionTitle')
+        table_header_layout.addWidget(self.table_section_title)
+        self.table_section_hint = QLabel(
+            self.translator.tr(
+                'table_select_hint',
+                default='Select a row to inspect its details; use Shift or Ctrl for bulk work.'
+            )
+        )
+        self.table_section_hint.setObjectName('tableSectionHint')
+        table_header_layout.addWidget(self.table_section_hint)
+        table_header_layout.addStretch()
+        table_layout.addWidget(table_header, 0)
 
         self.table_state_label = QLabel()
         self.table_state_label.setObjectName('tableStateLabel')
@@ -470,11 +496,15 @@ class BaseTableTab(QWidget):
         self.pagination.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(self.pagination, 0)
 
-        # Status bar - fixed at bottom, always visible
+        # Keep a status channel for recoverable errors, but do not repeat the
+        # pagination range in a second footer. Normal result context belongs in
+        # the summary strip and the pagination control.
         self.status_label = QLabel(self.translator.tr('msg_ready'))
+        self.status_label.setObjectName('tableStatusMessage')
         self.status_label.setStyleSheet(AppStyles.get_component_style('status_label'))
         self.status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.status_label.setFixedHeight(25)
+        self.status_label.setVisible(False)
         layout.addWidget(self.status_label, 0)
         self._update_action_state()
         self._update_result_summary()
@@ -736,22 +766,12 @@ class BaseTableTab(QWidget):
         self.data_table.display_data = paginated_data
         self.data_table.refresh_display()
 
-        # Update status with correct counts
-        page_count = len(paginated_data)
+        # Pagination owns the authoritative range label. Keep the separate
+        # status channel quiet for normal results so the same range is not
+        # announced twice; recoverable errors can still reveal it.
         total_filtered = len(self._full_filtered_data)
-        total_count = len(self.data_table.data) if hasattr(self.data_table, 'data') else 0
-
-        # Get translated strings for status
-        showing_text = self.translator.tr('pagination_showing') if hasattr(self.translator, 'tr') else 'Showing'
-        of_text = self.translator.tr('pagination_of') if hasattr(self.translator, 'tr') else 'of'
-        records_text = self.translator.tr('lbl_records') if hasattr(self.translator, 'tr') else 'records'
-
-        range_text = f"{start + 1}–{start + page_count}" if page_count else "0–0"
-        if total_filtered < total_count:
-            # Filtered view
-            self.status_label.setText(f"{showing_text} {range_text} {of_text} {total_filtered} ({total_count} {records_text})")
-        else:
-            self.status_label.setText(f"{showing_text} {range_text} {of_text} {total_count} {records_text}")
+        self.status_label.setText(self.translator.tr('msg_ready', default='Ready'))
+        self.status_label.setVisible(False)
         self._set_table_state('empty' if not total_filtered else 'ready')
         self._update_result_summary()
         self._update_action_state()
@@ -1546,6 +1566,17 @@ class BaseTableTab(QWidget):
         if hasattr(self, 'status_label'):
             self.status_label.setStyleSheet(AppStyles.get_component_style('status_label'))
             self._update_result_summary()
+        if hasattr(self, 'table_section_title'):
+            self.table_section_title.setText(
+                self.translator.tr('table_results', default='Results')
+            )
+        if hasattr(self, 'table_section_hint'):
+            self.table_section_hint.setText(
+                self.translator.tr(
+                    'table_select_hint',
+                    default='Select a row to inspect its details; use Shift or Ctrl for bulk work.'
+                )
+            )
             if hasattr(self, 'table_state_label'):
                 self.table_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
                 if self.table_state_label.isVisible():

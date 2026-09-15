@@ -2356,8 +2356,8 @@ class ReportsTab(QWidget):
                                  icon_only: bool = False):
         """Configure a report action with the same focus and label rules as tables."""
         button.setObjectName('reportToolbarAction')
-        if style_class:
-            button.setStyleSheet(AppStyles.get_button_style(style_class))
+        button.setProperty('toolbarVariant', style_class or '')
+        button.setProperty('iconOnly', bool(icon_only))
         icon = get_icon(icon_key, 18, use_white=bool(style_class))
         if not icon.isNull():
             button.setIcon(icon)
@@ -2367,11 +2367,26 @@ class ReportsTab(QWidget):
             button.setFixedSize(38, 36)
         else:
             button.setText(label)
-            button.setMinimumWidth(max(88, len(label) * 7 + 42))
+            # Leave room for the icon, label spacing, and focus border so
+            # action names never lose their final character on high-DPI
+            # or translated layouts. The toolbar itself can scroll.
+            button.setMinimumWidth(max(112, len(label) * 9 + 62))
             button.setFixedHeight(36)
         button.setToolTip(label)
         button.setAccessibleName(label)
+        action_width = max(112, len(label) * 9 + 62) if not icon_only else None
+        button.setStyleSheet(AppStyles.get_table_toolbar_action_style(
+            style_class, icon_only, object_name='reportToolbarAction',
+            fixed_width=action_width
+        ))
         button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        # Reapply geometry after the compact stylesheet is polished; Qt adds
+        # stylesheet padding to minimum dimensions.
+        if icon_only:
+            button.setFixedSize(40, 38)
+        else:
+            button.setFixedWidth(max(112, len(label) * 9 + 62))
+            button.setFixedHeight(38)
         return button
 
     def create_toolbar(self, parent_layout):
@@ -2382,14 +2397,26 @@ class ReportsTab(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setFixedHeight(58)
+        # A two-tier action surface preserves the existing capabilities while
+        # making the report workspace hierarchy explicit on narrow windows.
+        scroll.setFixedHeight(76)
 
         content = QWidget()
         content.setObjectName('reportToolbar')
-        toolbar = QHBoxLayout(content)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(2)
+        self.report_toolbar_heading = QLabel(
+            self.translator.tr('report_workspace', default='Report workspace')
+        )
+        self.report_toolbar_heading.setObjectName('reportToolbarHeading')
+        content_layout.addWidget(self.report_toolbar_heading)
+        action_row = QWidget(content)
+        toolbar = QHBoxLayout(action_row)
         toolbar.setContentsMargins(0, 0, 0, 0)
         toolbar.setSpacing(AppStyles.get_spacing(1))
         toolbar.setAlignment(Qt.AlignVCenter)
+        content_layout.addWidget(action_row)
 
         def group_label(text):
             label = QLabel(text)

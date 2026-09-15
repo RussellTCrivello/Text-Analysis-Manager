@@ -60,6 +60,7 @@ class AppStyles:
         'DANGER': "#D9534F",
         'DANGER_HOVER': "#B83D3A",
         'WARNING': "#C9832B",
+        'WARNING_HOVER': "#A66A20",
         'INFO': "#2F6FED",
         'WHITE': "#FFFFFF",
         'LIGHT_BG': "#F4F7FB",
@@ -94,6 +95,7 @@ class AppStyles:
         'DANGER': "#F27873",
         'DANGER_HOVER': "#D95D58",
         'WARNING': "#F0B563",
+        'WARNING_HOVER': "#D4954B",
         'INFO': "#6E9CFF",
         'WHITE': "#182536",
         'LIGHT_BG': "#101A28",
@@ -520,6 +522,54 @@ class AppStyles:
             color: {c['TEXT_MUTED']};
             border-color: {c['BORDER']};
         }}
+        /* Compact semantic variants; these replace the legacy padded dialog
+           styles without changing the shared button language. */
+        QPushButton#toolbarActionButton[toolbarVariant="primary"],
+        QPushButton#toolbarActionButton[toolbarVariant="success"] {{
+            background-color: {c['ACCENT']};
+            color: #FFFFFF;
+            border-color: {c['ACCENT']};
+        }}
+        QPushButton#toolbarActionButton[toolbarVariant="success"] {{
+            background-color: {c['SUCCESS']};
+            border-color: {c['SUCCESS']};
+        }}
+        QPushButton#toolbarActionButton[toolbarVariant="danger"] {{
+            background-color: {c['DANGER']};
+            color: #FFFFFF;
+            border-color: {c['DANGER']};
+        }}
+        QPushButton#toolbarActionButton[toolbarVariant="purple"] {{
+            background-color: {c['PURPLE']};
+            color: #FFFFFF;
+            border-color: {c['PURPLE']};
+        }}
+        QPushButton#toolbarActionButton[toolbarVariant="warning"] {{
+            background-color: {c['WARNING']};
+            color: #FFFFFF;
+            border-color: {c['WARNING']};
+        }}
+        QPushButton#toolbarActionButton[toolbarVariant]:hover:enabled {{
+            background-color: {c['ACCENT_HOVER']};
+            border-color: {c['ACCENT_HOVER']};
+            color: #FFFFFF;
+        }}
+        QPushButton#toolbarActionButton[toolbarVariant="success"]:hover:enabled {{
+            background-color: {c['SUCCESS_HOVER']};
+            border-color: {c['SUCCESS_HOVER']};
+        }}
+        QPushButton#toolbarActionButton[toolbarVariant="danger"]:hover:enabled {{
+            background-color: {c['DANGER_HOVER']};
+            border-color: {c['DANGER_HOVER']};
+        }}
+        QPushButton#toolbarActionButton[toolbarVariant="purple"]:hover:enabled {{
+            background-color: {c['PURPLE_HOVER']};
+            border-color: {c['PURPLE_HOVER']};
+        }}
+        QPushButton#toolbarActionButton[toolbarVariant="warning"]:hover:enabled {{
+            background-color: {c['WARNING_HOVER']};
+            border-color: {c['WARNING_HOVER']};
+        }}
         QToolButton#toolbarMoreButton {{
             background-color: transparent;
             color: {c['TEXT_SECONDARY']};
@@ -559,6 +609,12 @@ class AppStyles:
             font-size: {cls.FONT_SIZE_SMALL}pt;
             font-weight: 700;
             padding: 0 2px;
+        }}
+        QLabel#reportToolbarHeading {{
+            color: {c['TEXT_PRIMARY']};
+            font-size: {cls.FONT_SIZE_LARGE}pt;
+            font-weight: 700;
+            padding-left: 2px;
         }}
         QPushButton#reportToolbarAction {{
             background-color: {c['WHITE']};
@@ -1315,6 +1371,43 @@ class AppStyles:
         QWidget#workspaceFilterRow {{
             background-color: transparent;
         }}
+        QLabel#tableResultSummary {{
+            background-color: {c['LIGHT_BG']};
+            color: {c['TEXT_SECONDARY']};
+            border: 1px solid {c['BORDER']};
+            border-radius: 7px;
+            padding: 6px 10px;
+            font-size: {cls.FONT_SIZE_SMALL}pt;
+            font-weight: 600;
+        }}
+        QWidget#tableSelectionActionBar {{
+            background-color: {c['LIGHT_BG']};
+            border: 1px solid {c['BORDER']};
+            border-radius: 7px;
+            padding: 2px 8px;
+        }}
+        QLabel#tableSelectionCount {{
+            color: {c['TEXT_PRIMARY']};
+            font-weight: 700;
+        }}
+        QPushButton#selectionPrimaryAction, QPushButton#selectionClearAction {{
+            min-height: 32px;
+            padding: 5px 10px;
+            border-radius: 6px;
+        }}
+        QWidget#tableSectionHeader {{
+            background-color: {c['WHITE']};
+            border-bottom: 1px solid {c['BORDER']};
+        }}
+        QLabel#tableSectionTitle {{
+            color: {c['TEXT_PRIMARY']};
+            font-size: {cls.FONT_SIZE_LARGE}pt;
+            font-weight: 700;
+        }}
+        QLabel#tableSectionHint {{
+            color: {c['TEXT_MUTED']};
+            font-size: {cls.FONT_SIZE_SMALL}pt;
+        }}
         QScrollArea#workspaceActionScroller, QScrollArea#workspaceFilterScroller {{
             background-color: transparent;
             border: none;
@@ -1327,6 +1420,42 @@ class AppStyles:
             background-color: {c['BORDER']};
             border-radius: 3px;
             min-width: 24px;
+        }}
+        QGroupBox#timelineControlGroup {{
+            background-color: {c['WHITE']};
+            color: {c['TEXT_SECONDARY']};
+            border: 1px solid {c['BORDER']};
+            border-radius: 7px;
+            margin-top: 8px;
+            padding-top: 4px;
+            font-size: {cls.FONT_SIZE_SMALL}pt;
+            font-weight: 700;
+        }}
+        QGroupBox#timelineControlGroup::title {{
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 5px;
+            background-color: {c['LIGHT_BG']};
+        }}
+        QLabel#timelineControlsTitle {{
+            color: {c['TEXT_PRIMARY']};
+            font-size: {cls.FONT_SIZE_LARGE}pt;
+            font-weight: 700;
+        }}
+        QScrollArea#timelineControlsScroller,
+        QScrollArea#timelineFilterScroller {{
+            background-color: transparent;
+            border: none;
+        }}
+        QLabel#timelineFiltersHeading {{
+            color: {c['TEXT_SECONDARY']};
+            font-size: {cls.FONT_SIZE_SMALL}pt;
+            font-weight: 700;
+        }}
+        QFrame#timelineDataHeader, QFrame#timelineChartControls {{
+            background-color: {c['WHITE']};
+            border: 1px solid {c['BORDER']};
+            border-radius: 8px;
         }}
         QFrame#tableWorkspace {{
             background-color: {c['WHITE']};
@@ -1354,6 +1483,72 @@ class AppStyles:
     
     # ==================== BUTTON STYLES ====================
     
+    @classmethod
+    def get_table_toolbar_action_style(cls, variant: str = None,
+                                        icon_only: bool = False,
+                                        object_name: str = 'toolbarActionButton',
+                                        fixed_width: int = None) -> str:
+        """Return a compact theme-aware style for workspace actions."""
+        cls.ensure_initialized()
+        c = cls._colors
+        palettes = {
+            'primary': (c['ACCENT'], c['ACCENT_HOVER'], '#FFFFFF'),
+            'success': (c['SUCCESS'], c['SUCCESS_HOVER'], '#FFFFFF'),
+            'danger': (c['DANGER'], c['DANGER_HOVER'], '#FFFFFF'),
+            'purple': (c['PURPLE'], c['PURPLE_HOVER'], '#FFFFFF'),
+            'warning': (c['WARNING'], c['WARNING_HOVER'], '#FFFFFF'),
+        }
+        background, hover, foreground = palettes.get(
+            variant, (c['WHITE'], c['LIGHT_BG'], c['TEXT_PRIMARY'])
+        )
+        border = background if variant in palettes else c['BORDER']
+        selector = f'QPushButton#{object_name}'
+        width_rule = (
+            f'min-width: {fixed_width}px; max-width: {fixed_width}px;'
+            if fixed_width else 'min-width: 0px; max-width: 1000px;'
+        )
+        return f"""
+            {selector} {{
+                background-color: {background};
+                color: {foreground};
+                border: 1px solid {border};
+                border-radius: 7px;
+                padding: {'5px 7px' if icon_only else '5px 10px'};
+                {width_rule}
+                min-height: {0 if icon_only else 26}px;
+                max-height: {26 if not icon_only else 38}px;
+                font-family: {cls.FONT_FAMILY};
+                font-size: {cls.FONT_SIZE}pt;
+                font-weight: 600;
+            }}
+            {selector}[iconOnly="true"] {{
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 26px;
+                max-height: 26px;
+                padding: 5px;
+            }}
+            {selector}:hover:enabled {{
+                background-color: {hover};
+                border-color: {hover if variant in palettes else c['ACCENT']};
+                color: {foreground};
+            }}
+            {selector}:pressed:enabled {{
+                background-color: {c['ACCENT_HOVER']};
+                border-color: {c['ACCENT_HOVER']};
+                color: #FFFFFF;
+            }}
+            {selector}:focus {{
+                border: 2px solid {c['BORDER_FOCUS']};
+                padding: {('4px 6px' if icon_only else '4px 9px')};
+            }}
+            {selector}:disabled {{
+                background-color: {c['LIGHT_BG']};
+                color: {c['TEXT_MUTED']};
+                border-color: {c['BORDER']};
+            }}
+        """
+
     @classmethod
     def get_button_style(cls, style_type: str = 'default') -> str:
         """
@@ -1755,8 +1950,9 @@ class AppStyles:
             
             'preview_header': f"""
                 QFrame {{
-                    background-color: {c['PANEL_HEADER']};
-                    border-radius: 6px 6px 0 0;
+                    background-color: {c['LIGHT_BG']};
+                    border: 1px solid {c['BORDER']};
+                    border-radius: 7px 7px 0 0;
                     padding: 2px;
                 }}
             """,
@@ -1766,30 +1962,41 @@ class AppStyles:
                     background-color: {c['PANEL_BG']};
                     border: 1px solid {c['BORDER']};
                     border-top: none;
-                    border-radius: 0 0 6px 6px;
+                    border-radius: 0 0 7px 7px;
                 }}
             """,
             
-            'preview_title': f"""
+            'text_preview_title': f"""
                 QLabel {{
-                    color: #FFFFFF;
-                    font-size: 11pt;
-                    font-weight: 600;
+                    color: {c['TEXT_PRIMARY']};
+                    font-size: 10pt;
+                    font-weight: 700;
+                }}
+            """,
+
+            'preview_meta': f"""
+                QLabel#previewMeta {{
+                    color: {c['TEXT_SECONDARY']};
+                    font-size: 9pt;
+                    padding-left: 8px;
                 }}
             """,
             
             'preview_toggle': f"""
                 QPushButton {{
-                    background-color: transparent;
-                    color: #FFFFFF;
-                    border: 1px solid rgba(255, 255, 255, 0.3);
-                    border-radius: 4px;
-                    font-size: 10pt;
-                    font-weight: bold;
+                    background-color: {c['WHITE']};
+                    color: {c['TEXT_SECONDARY']};
+                    border: 1px solid {c['BORDER']};
+                    border-radius: 5px;
+                    padding: 2px;
                 }}
                 QPushButton:hover {{
-                    background-color: rgba(255, 255, 255, 0.1);
-                    border-color: rgba(255, 255, 255, 0.5);
+                    background-color: {c['WHITE']};
+                    border-color: {c['BORDER_FOCUS']};
+                    color: {c['TEXT_PRIMARY']};
+                }}
+                QPushButton:focus {{
+                    border: 2px solid {c['BORDER_FOCUS']};
                 }}
             """,
             
@@ -1808,7 +2015,7 @@ class AppStyles:
                     font-weight: 400;
                     background-color: {c['WHITE']};
                     padding: 6px 10px;
-                    border: 1px solid #E0E0E0;
+                    border: 1px solid {c['BORDER']};
                     border-radius: 4px;
                 }}
             """,
@@ -4214,10 +4421,11 @@ class AppStyles:
                 color: {c['TEXT_SECONDARY']};
                 border: 1px solid {c['BORDER']};
                 border-radius: {btn_size // 2}px;
-                min-width: {btn_size}px;
-                min-height: {btn_size}px;
-                max-width: {btn_size}px;
-                max-height: {btn_size}px;
+                padding: 0px;
+                min-width: {btn_size - 2}px;
+                min-height: {btn_size - 2}px;
+                max-width: {btn_size - 2}px;
+                max-height: {btn_size - 2}px;
             }}
             #circularNavButton:hover:enabled {{
                 background-color: {accent_color};
@@ -4239,10 +4447,10 @@ class AppStyles:
                 color: {c['TEXT_SECONDARY']};
                 border: 1px solid {c['BORDER']};
                 border-radius: 6px;
-                min-width: 36px;
-                min-height: {indicator_height}px;
-                max-width: 36px;
-                max-height: {indicator_height}px;
+                min-width: 34px;
+                min-height: {indicator_height - 2}px;
+                max-width: 34px;
+                max-height: {indicator_height - 2}px;
                 padding: 0px;
                 font-size: {small_font}px;
                 font-weight: 600;
@@ -4292,9 +4500,10 @@ class AppStyles:
                 font-size: {base_font}px;
                 font-weight: 600;
                 color: {c['TEXT_PRIMARY']};
-                min-height: {btn_size}px;
-                min-width: 60px;
-                max-width: 70px;
+                min-height: {btn_size - 10}px;
+                max-height: {btn_size - 10}px;
+                min-width: 44px;
+                max-width: 44px;
             }}
             #modernPageSpinBox:hover {{
                 border: 1px solid {accent_color};
@@ -4312,13 +4521,14 @@ class AppStyles:
                 background-color: {c['WHITE']};
                 border: 1px solid {c['BORDER']};
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 4px 6px;
                 font-size: {base_font}px;
                 font-weight: 600;
                 color: {c['TEXT_PRIMARY']};
-                min-height: {btn_size}px;
-                min-width: 65px;
-                max-width: 75px;
+                min-height: {btn_size - 10}px;
+                max-height: {btn_size - 10}px;
+                min-width: 55px;
+                max-width: 55px;
             }}
             #modernPageSizeCombo:hover {{
                 border: 1px solid {accent_color};
@@ -4988,8 +5198,23 @@ class AppStyles:
         
         return f"""
             QTableWidget {{
+                background-color: {colors.get('WHITE', '#FFFFFF')};
+                alternate-background-color: {colors.get('LIGHT_BG', '#F0F0F0')};
+                color: {colors.get('TEXT_PRIMARY', '#2C3E50')};
+                gridline-color: {border_color};
                 border: 1px solid {border_color};
                 border-radius: 8px;
+            }}
+            QTableWidget::item:selected {{
+                background-color: {accent_color};
+                color: #FFFFFF;
+            }}
+            QHeaderView::section {{
+                background-color: {colors.get('TABLE_HEADER', '#20344D')};
+                color: #FFFFFF;
+                border: none;
+                padding: 8px;
+                font-weight: 700;
             }}
             QScrollBar:vertical {{
                 border: none;

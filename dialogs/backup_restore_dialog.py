@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QProgressBar, QCheckBox, QDialogButtonBox, QWidget
 )
 from icons.icon_manager import setup_icon_button, get_icon
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize
 from typing import Optional
 from pathlib import Path
 from datetime import datetime
@@ -56,6 +56,30 @@ class ImportBackupPreviewDialog(QDialog):
         for child in self.findChildren(QWidget):
             child.setLayoutDirection(direction)
     
+    def _make_action_button(self, icon_key: str, label: str,
+                            variant: Optional[str] = None) -> QPushButton:
+        """Create a labeled preview action with shared dialog styling."""
+        from styles.styles import AppStyles
+        button = QPushButton()
+        button.setObjectName('dialogActionButton')
+        button.setProperty('toolbarVariant', variant or '')
+        button.setProperty('iconOnly', False)
+        icon = get_icon(icon_key, 18, use_white=bool(variant))
+        if not icon.isNull():
+            button.setIcon(icon)
+            button.setIconSize(QSize(18, 18))
+        button.setText(label)
+        button.setToolTip(label)
+        button.setAccessibleName(label)
+        button.setStyleSheet(AppStyles.get_table_toolbar_action_style(
+            variant, False, object_name='dialogActionButton'
+        ))
+        button.setFixedWidth(max(108, len(label) * 8 + 50))
+        button.setFixedHeight(38)
+        button.setAutoDefault(False)
+        button.setDefault(False)
+        return button
+
     def setup_ui(self):
         """Setup preview UI"""
         layout = QVBoxLayout(self)
@@ -114,22 +138,19 @@ class ImportBackupPreviewDialog(QDialog):
         btn_layout.setSpacing(AppStyles.get_spacing(3))  # 24px between icon buttons
         btn_layout.addStretch()
         
-        self.btn_restore = QPushButton()
-        setup_icon_button(self.btn_restore, 'btn_restore', self.translator.tr('btn_restore'))
-        self.btn_restore.setAutoDefault(False)
-        self.btn_restore.setDefault(False)
+        self.btn_restore = self._make_action_button(
+            'btn_restore', self.translator.tr('btn_restore'), variant='primary'
+        )
         self.btn_restore.clicked.connect(self._on_restore)
         
-        self.btn_merge = QPushButton()
-        setup_icon_button(self.btn_merge, 'btn_merge', self.translator.tr('btn_merge'))
-        self.btn_merge.setAutoDefault(False)
-        self.btn_merge.setDefault(False)
+        self.btn_merge = self._make_action_button(
+            'btn_merge', self.translator.tr('btn_merge')
+        )
         self.btn_merge.clicked.connect(self._on_merge)
         
-        btn_cancel = QPushButton()
-        setup_icon_button(btn_cancel, 'btn_cancel', self.translator.tr('btn_cancel'))
-        btn_cancel.setAutoDefault(False)
-        btn_cancel.setDefault(False)
+        btn_cancel = self._make_action_button(
+            'btn_cancel', self.translator.tr('btn_cancel')
+        )
         btn_cancel.clicked.connect(self.reject)
         
         btn_layout.addWidget(self.btn_restore)
@@ -236,6 +257,37 @@ class BackupRestoreDialog(QDialog):
         for child in self.findChildren(QWidget):
             child.setLayoutDirection(direction)
     
+    def _make_action_button(self, icon_key: str, label: str,
+                            variant: Optional[str] = None,
+                            icon_only: bool = False) -> QPushButton:
+        """Create a compact, labeled dialog action with shared theme/focus rules."""
+        from styles.styles import AppStyles
+        button = QPushButton()
+        button.setObjectName('dialogActionButton')
+        button.setProperty('toolbarVariant', variant or '')
+        button.setProperty('iconOnly', icon_only)
+        icon = get_icon(icon_key, 18, use_white=bool(variant))
+        if not icon.isNull():
+            button.setIcon(icon)
+            button.setIconSize(QSize(18, 18))
+        if icon_only:
+            button.setText('')
+        else:
+            button.setText(label)
+        button.setToolTip(label)
+        button.setAccessibleName(label)
+        button.setStyleSheet(AppStyles.get_table_toolbar_action_style(
+            variant, icon_only, object_name='dialogActionButton'
+        ))
+        if icon_only:
+            button.setFixedSize(40, 38)
+        else:
+            button.setFixedWidth(max(108, len(label) * 8 + 50))
+            button.setFixedHeight(38)
+        button.setAutoDefault(False)
+        button.setDefault(False)
+        return button
+
     def setup_ui(self):
         """Setup UI"""
         layout = QVBoxLayout(self)
@@ -256,11 +308,10 @@ class BackupRestoreDialog(QDialog):
         is_rtl = self.translator.current_language == 'ar'
         btn_spacing = AppStyles.get_spacing(3) if is_rtl else AppStyles.get_spacing(2)  # 24px RTL for icon margins
         backup_btn_layout.setSpacing(btn_spacing)
-        self.btn_create_backup = QPushButton()
-        setup_icon_button(self.btn_create_backup, 'btn_create_backup', self.translator.tr('btn_create_backup'))
-        # Disable autoDefault to prevent Enter key from triggering buttons unexpectedly
-        self.btn_create_backup.setAutoDefault(False)
-        self.btn_create_backup.setDefault(False)
+        self.btn_create_backup = self._make_action_button(
+            'btn_create_backup', self.translator.tr('btn_create_backup'),
+            variant='success', icon_only=False
+        )
         self.btn_create_backup.clicked.connect(self.create_backup)
         backup_btn_layout.addWidget(self.btn_create_backup, alignment=Qt.AlignVCenter)
         backup_btn_layout.addStretch()
@@ -309,38 +360,32 @@ class BackupRestoreDialog(QDialog):
         restore_btn_layout = QHBoxLayout()
         restore_btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
         restore_btn_layout.setSpacing(btn_spacing)
-        self.btn_restore = QPushButton()
-        setup_icon_button(self.btn_restore, 'btn_restore', self.translator.tr('btn_restore'))
-        self.btn_restore.setAutoDefault(False)
-        self.btn_restore.setDefault(False)
+        self.btn_restore = self._make_action_button(
+            'btn_restore', self.translator.tr('btn_restore'), variant='primary'
+        )
         self.btn_restore.clicked.connect(self.restore_backup)
         self.btn_restore.setEnabled(False)
         
-        self.btn_merge = QPushButton()
-        setup_icon_button(self.btn_merge, 'btn_merge', self.translator.tr('btn_merge'))
-        self.btn_merge.setAutoDefault(False)
-        self.btn_merge.setDefault(False)
+        self.btn_merge = self._make_action_button(
+            'btn_merge', self.translator.tr('btn_merge')
+        )
         self.btn_merge.clicked.connect(self.merge_backup)
         self.btn_merge.setEnabled(False)
         
-        self.btn_restore_file = QPushButton()
-        setup_icon_button(self.btn_restore_file, 'btn_restore_from_file', self.translator.tr('btn_restore_from_file'))
-        self.btn_restore_file.setAutoDefault(False)
-        self.btn_restore_file.setDefault(False)
+        self.btn_restore_file = self._make_action_button(
+            'btn_restore_from_file', self.translator.tr('btn_restore_from_file')
+        )
         self.btn_restore_file.clicked.connect(self.restore_from_file)
         
-        self.btn_delete_backup = QPushButton()
-        setup_icon_button(self.btn_delete_backup, 'btn_delete_backup', self.translator.tr('btn_delete'))
-        self.btn_delete_backup.setProperty('class', 'danger')
-        self.btn_delete_backup.setAutoDefault(False)
-        self.btn_delete_backup.setDefault(False)
+        self.btn_delete_backup = self._make_action_button(
+            'btn_delete_backup', self.translator.tr('btn_delete'), variant='danger'
+        )
         self.btn_delete_backup.clicked.connect(self.delete_backup)
         self.btn_delete_backup.setEnabled(False)
         
-        self.btn_refresh = QPushButton()
-        setup_icon_button(self.btn_refresh, 'btn_refresh', self.translator.tr('btn_refresh'))
-        self.btn_refresh.setAutoDefault(False)
-        self.btn_refresh.setDefault(False)
+        self.btn_refresh = self._make_action_button(
+            'btn_refresh', self.translator.tr('btn_refresh'), icon_only=True
+        )
         self.btn_refresh.clicked.connect(self.load_backups)
         
         restore_btn_layout.addWidget(self.btn_restore, alignment=Qt.AlignVCenter)
@@ -367,12 +412,11 @@ class BackupRestoreDialog(QDialog):
         btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
         btn_layout.setSpacing(btn_spacing)
         btn_layout.addStretch()
-        btn_close = QPushButton()
-        setup_icon_button(btn_close, 'btn_close', self.translator.tr('btn_close'))
-        btn_close.setAutoDefault(False)
-        btn_close.setDefault(False)
-        btn_close.clicked.connect(self.accept)
-        btn_layout.addWidget(btn_close, alignment=Qt.AlignVCenter)
+        self.btn_close = self._make_action_button(
+            'btn_close', self.translator.tr('btn_close')
+        )
+        self.btn_close.clicked.connect(self.accept)
+        btn_layout.addWidget(self.btn_close, alignment=Qt.AlignVCenter)
         layout.addLayout(btn_layout)
         
         # Connect table selection
