@@ -13,6 +13,7 @@ from typing import List, Dict, Optional
 from translations.translations import TranslationManager
 from styles.styles import AppStyles
 from utils.logger import get_logger
+from utils.table_ui import configure_table, set_item_with_tooltip
 from icons.icon_manager import setup_icon_button
 
 logger = get_logger(__name__)
@@ -23,13 +24,17 @@ class BulkOperationsDialog(QDialog):
     
     operation_completed = pyqtSignal(str, int)  # operation_type, count
     
-    def __init__(self, parent, translator: TranslationManager, 
-                 table_name: str, data: List[Dict], columns: List[tuple]):
+    def __init__(self, parent, translator: TranslationManager,
+                 table_name: str, data: List[Dict], columns: List[tuple],
+                 preselected_ids: Optional[List[int]] = None):
         super().__init__(parent)
         self.translator = translator
         self.table_name = table_name
         self.data = data
         self.columns = columns
+        # When opened from a table selection bar, carry the user's selection
+        # into the dialog while preserving the ability to change it.
+        self.preselected_ids = {record_id for record_id in (preselected_ids or [])}
         self.selected_ids = []
         
         self.setWindowTitle(translator.tr('bulk_operations') if hasattr(translator, 'tr') else 'Bulk Operations')
@@ -138,36 +143,62 @@ class BulkOperationsDialog(QDialog):
         
         controls.addStretch()
         
-        self.selection_count_label = QLabel("0 selected")
+        self.selection_count_label = QLabel(
+            self.translator.tr('bulk_selected_count', count=0)
+        )
         controls.addWidget(self.selection_count_label)
         
         layout.addLayout(controls)
         
         # Selection table
         self.selection_table = QTableWidget()
+        self.selection_table.setObjectName('bulkSelectionTable')
         self.selection_table.setColumnCount(len(self.columns) + 1)  # +1 for checkbox
-        headers = ['Select'] + [col[1] for col in self.columns]
+        headers = [self.translator.tr('btn_select_all', default='Select')] + [col[1] for col in self.columns]
         self.selection_table.setHorizontalHeaderLabels(headers)
-        self.selection_table.setSelectionBehavior(QTableWidget.SelectRows)
+        configure_table(self.selection_table, multi_select=True)
         self.selection_table.horizontalHeader().setStretchLastSection(True)
+        self.selection_table.setAccessibleName(self.translator.tr(
+            'bulk_select_records', default='Select records for bulk operation'
+        ))
+        self.selection_table.setColumnWidth(0, 64)
         
         # Populate table
         self.selection_table.setRowCount(len(self.data))
         for row_idx, row_data in enumerate(self.data):
             # Checkbox
             checkbox = QCheckBox()
+            record_label = row_data.get('name') or row_data.get('title') or row_data.get('id', row_idx + 1)
+            checkbox.setAccessibleName(
+                f"{self.translator.tr('btn_select_all', default='Select')} {record_label}"
+            )
+            checkbox.setToolTip(checkbox.accessibleName())
             checkbox.stateChanged.connect(self.update_selection_count)
+            checkbox.setChecked(row_data.get('id') in self.preselected_ids)
             self.selection_table.setCellWidget(row_idx, 0, checkbox)
-            
+
             # Data columns
             for col_idx, (col_key, _, _) in enumerate(self.columns):
                 value = row_data.get(col_key, '')
-                item = QTableWidgetItem(str(value)[:100])  # Truncate long values
+                item = set_item_with_tooltip(
+                    self.selection_table, row_idx, col_idx + 1, str(value)[:100]
+                )
+                item.setToolTip(str(value))
                 item.setData(Qt.UserRole, row_data.get('id'))
-                self.selection_table.setItem(row_idx, col_idx + 1, item)
-        
+
+        self.update_selection_count()
         self.selection_table.resizeColumnsToContents()
         layout.addWidget(self.selection_table)
+        self.selection_state_label = QLabel()
+        self.selection_state_label.setObjectName('tableStateLabel')
+        self.selection_state_label.setAlignment(Qt.AlignCenter)
+        self.selection_state_label.setWordWrap(True)
+        self.selection_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
+        self.selection_state_label.setText(self.translator.tr(
+            'table_empty', default='No records are available for this operation.'
+        ))
+        self.selection_state_label.setVisible(not bool(self.data))
+        layout.addWidget(self.selection_state_label)
         
         return widget
     
@@ -193,7 +224,10 @@ class BulkOperationsDialog(QDialog):
                 field_layout.addWidget(label)
                 
                 edit = AutoCompleteLineEdit()
-                edit.setPlaceholderText(f"Leave empty to keep current value")
+                edit.setPlaceholderText(
+                    self.translator.tr('bulk_leave_empty') if hasattr(self.translator, 'tr')
+                    else 'Leave empty to keep current value'
+                )
                 self.edit_fields[col_key] = edit
                 field_layout.addWidget(edit)
                 
@@ -253,6 +287,10 @@ class BulkOperationsDialog(QDialog):
             self.tabs.setCurrentIndex(2)
             self.tabs.setTabEnabled(1, False)
             self.tabs.setTabEnabled(2, True)
+        if hasattr(self, 'btn_execute'):
+            self.btn_execute.setEnabled(
+                self.radio_import.isChecked() or bool(self.selected_ids)
+            )
     
     def select_all(self):
         """Select all rows"""
@@ -285,7 +323,13 @@ class BulkOperationsDialog(QDialog):
                         self.selected_ids.append(record_id)
                         count += 1
         
-        self.selection_count_label.setText(f"{count} selected")
+        self.selection_count_label.setText(
+            self.translator.tr('bulk_selected_count', count=count)
+        )
+        if hasattr(self, 'btn_execute'):
+            self.btn_execute.setEnabled(
+                self.radio_import.isChecked() or bool(self.selected_ids)
+            )
     
     def browse_import_file(self):
         """Browse for import file"""
@@ -379,8 +423,11 @@ class BulkOperationsDialog(QDialog):
                 updates[col_key] = value
         
         if not updates:
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "No fields to update")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('bulk_no_fields_update')
+            )
             return
         
         self.progress.setVisible(True)
@@ -423,8 +470,11 @@ class BulkOperationsDialog(QDialog):
         """Execute bulk import"""
         filepath = self.import_file_path.text()
         if not filepath or filepath == "No file selected":
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "Please select a file to import")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('bulk_select_file')
+            )
             return
         
         # Import logic (similar to existing import functions)

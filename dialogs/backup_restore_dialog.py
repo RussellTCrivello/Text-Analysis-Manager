@@ -7,14 +7,16 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem, QLabel, QMessageBox, QFileDialog, QHeaderView,
     QGroupBox, QProgressBar, QCheckBox, QDialogButtonBox, QWidget
 )
-from icons.icon_manager import setup_icon_button
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from icons.icon_manager import setup_icon_button, get_icon
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize
 from typing import Optional
 from pathlib import Path
 from datetime import datetime
+from html import escape
 from utils.backup_restore import BackupRestoreManager
 from translations.translations import TranslationManager
 from utils.logger import get_logger
+from utils.table_ui import configure_table, set_item_with_tooltip
 
 logger = get_logger(__name__)
 
@@ -54,6 +56,30 @@ class ImportBackupPreviewDialog(QDialog):
         for child in self.findChildren(QWidget):
             child.setLayoutDirection(direction)
     
+    def _make_action_button(self, icon_key: str, label: str,
+                            variant: Optional[str] = None) -> QPushButton:
+        """Create a labeled preview action with shared dialog styling."""
+        from styles.styles import AppStyles
+        button = QPushButton()
+        button.setObjectName('dialogActionButton')
+        button.setProperty('toolbarVariant', variant or '')
+        button.setProperty('iconOnly', False)
+        icon = get_icon(icon_key, 18, use_white=bool(variant))
+        if not icon.isNull():
+            button.setIcon(icon)
+            button.setIconSize(QSize(18, 18))
+        button.setText(label)
+        button.setToolTip(label)
+        button.setAccessibleName(label)
+        button.setStyleSheet(AppStyles.get_table_toolbar_action_style(
+            variant, False, object_name='dialogActionButton'
+        ))
+        button.setFixedWidth(max(108, len(label) * 8 + 50))
+        button.setFixedHeight(38)
+        button.setAutoDefault(False)
+        button.setDefault(False)
+        return button
+
     def setup_ui(self):
         """Setup preview UI"""
         layout = QVBoxLayout(self)
@@ -64,7 +90,10 @@ class ImportBackupPreviewDialog(QDialog):
         is_valid, error_msg, preview = self.backup_manager.validate_backup_file(self.file_path)
         
         if not is_valid:
-            error_label = QLabel(f"<b>{self.translator.tr('backup_invalid_file')}</b><br>{error_msg}")
+            error_label = QLabel(
+                f"<b>{escape(self.translator.tr('backup_invalid_file'))}</b><br>"
+                f"{escape(str(error_msg))}"
+            )
             error_label.setWordWrap(True)
             error_label.setStyleSheet("color: #c0392b; padding: 12px;")
             layout.addWidget(error_label)
@@ -75,7 +104,7 @@ class ImportBackupPreviewDialog(QDialog):
         
         # Show preview
         filename = Path(self.file_path).name
-        file_label = QLabel(f"<b>{filename}</b>")
+        file_label = QLabel(f"<b>{escape(filename)}</b>")
         layout.addWidget(file_label)
         
         preview_layout = QVBoxLayout()
@@ -109,22 +138,19 @@ class ImportBackupPreviewDialog(QDialog):
         btn_layout.setSpacing(AppStyles.get_spacing(3))  # 24px between icon buttons
         btn_layout.addStretch()
         
-        self.btn_restore = QPushButton()
-        setup_icon_button(self.btn_restore, 'btn_restore', self.translator.tr('btn_restore'))
-        self.btn_restore.setAutoDefault(False)
-        self.btn_restore.setDefault(False)
+        self.btn_restore = self._make_action_button(
+            'btn_restore', self.translator.tr('btn_restore'), variant='primary'
+        )
         self.btn_restore.clicked.connect(self._on_restore)
         
-        self.btn_merge = QPushButton()
-        setup_icon_button(self.btn_merge, 'btn_merge', self.translator.tr('btn_merge'))
-        self.btn_merge.setAutoDefault(False)
-        self.btn_merge.setDefault(False)
+        self.btn_merge = self._make_action_button(
+            'btn_merge', self.translator.tr('btn_merge')
+        )
         self.btn_merge.clicked.connect(self._on_merge)
         
-        btn_cancel = QPushButton()
-        setup_icon_button(btn_cancel, 'btn_cancel', self.translator.tr('btn_cancel'))
-        btn_cancel.setAutoDefault(False)
-        btn_cancel.setDefault(False)
+        btn_cancel = self._make_action_button(
+            'btn_cancel', self.translator.tr('btn_cancel')
+        )
         btn_cancel.clicked.connect(self.reject)
         
         btn_layout.addWidget(self.btn_restore)
@@ -146,23 +172,34 @@ class BackupThread(QThread):
     finished = pyqtSignal(bool, str)
     progress = pyqtSignal(str)
     
-    def __init__(self, backup_manager: BackupRestoreManager, backup_type: str = 'MANUAL'):
+    def __init__(self, backup_manager: BackupRestoreManager, backup_type: str = 'MANUAL', translator: TranslationManager = None):
         super().__init__()
         self.backup_manager = backup_manager
         self.backup_type = backup_type
-    
+        self.translator = translator
+
+    def _tr(self, key: str, fallback: str, **kwargs) -> str:
+        return self.translator.tr(key, **kwargs) if self.translator else fallback
+
     def run(self):
         """Run backup operation"""
         try:
-            self.progress.emit("Creating backup...")
+            self.progress.emit(self._tr('msg_creating_backup', 'Creating backup...'))
             success, backup_path, backup_info = self.backup_manager.create_backup(self.backup_type)
             if success:
-                self.finished.emit(True, f"Backup created successfully!\nLocation: {backup_path}")
+                self.finished.emit(
+                    True,
+                    f"{self._tr('msg_backup_created_success', 'Backup created successfully!')}\n"
+                    f"{self._tr('msg_backup_location', 'Location')}: {backup_path}"
+                )
             else:
-                error = backup_info.get('error', 'Unknown error')
-                self.finished.emit(False, f"Backup failed: {error}")
+                error = backup_info.get('error', self._tr('msg_error', 'Error'))
+                self.finished.emit(
+                    False,
+                    f"{self._tr('msg_backup_failed', 'Backup failed')}: {error}"
+                )
         except Exception as e:
-            self.finished.emit(False, f"Error: {str(e)}")
+            self.finished.emit(False, f"{self._tr('msg_error', 'Error')}: {e}")
 
 
 class RestoreThread(QThread):
@@ -170,23 +207,27 @@ class RestoreThread(QThread):
     finished = pyqtSignal(bool, str)
     progress = pyqtSignal(str)
     
-    def __init__(self, backup_manager: BackupRestoreManager, backup_path: str, merge: bool = False):
+    def __init__(self, backup_manager: BackupRestoreManager, backup_path: str, merge: bool = False, translator: TranslationManager = None):
         super().__init__()
         self.backup_manager = backup_manager
         self.backup_path = backup_path
         self.merge = merge
-    
+        self.translator = translator
+
+    def _tr(self, key: str, fallback: str, **kwargs) -> str:
+        return self.translator.tr(key, **kwargs) if self.translator else fallback
+
     def run(self):
         """Run restore operation"""
         try:
-            if self.merge:
-                self.progress.emit("Merging backup...")
-            else:
-                self.progress.emit("Restoring backup...")
+            self.progress.emit(
+                self._tr('msg_merging_backup', 'Merging backup...')
+                if self.merge else self._tr('msg_restoring_backup', 'Restoring backup...')
+            )
             success, message = self.backup_manager.restore_backup(self.backup_path, merge=self.merge)
             self.finished.emit(success, message)
         except Exception as e:
-            self.finished.emit(False, f"Error: {str(e)}")
+            self.finished.emit(False, f"{self._tr('msg_error', 'Error')}: {e}")
 
 
 class BackupRestoreDialog(QDialog):
@@ -216,6 +257,37 @@ class BackupRestoreDialog(QDialog):
         for child in self.findChildren(QWidget):
             child.setLayoutDirection(direction)
     
+    def _make_action_button(self, icon_key: str, label: str,
+                            variant: Optional[str] = None,
+                            icon_only: bool = False) -> QPushButton:
+        """Create a compact, labeled dialog action with shared theme/focus rules."""
+        from styles.styles import AppStyles
+        button = QPushButton()
+        button.setObjectName('dialogActionButton')
+        button.setProperty('toolbarVariant', variant or '')
+        button.setProperty('iconOnly', icon_only)
+        icon = get_icon(icon_key, 18, use_white=bool(variant))
+        if not icon.isNull():
+            button.setIcon(icon)
+            button.setIconSize(QSize(18, 18))
+        if icon_only:
+            button.setText('')
+        else:
+            button.setText(label)
+        button.setToolTip(label)
+        button.setAccessibleName(label)
+        button.setStyleSheet(AppStyles.get_table_toolbar_action_style(
+            variant, icon_only, object_name='dialogActionButton'
+        ))
+        if icon_only:
+            button.setFixedSize(40, 38)
+        else:
+            button.setFixedWidth(max(108, len(label) * 8 + 50))
+            button.setFixedHeight(38)
+        button.setAutoDefault(False)
+        button.setDefault(False)
+        return button
+
     def setup_ui(self):
         """Setup UI"""
         layout = QVBoxLayout(self)
@@ -236,11 +308,10 @@ class BackupRestoreDialog(QDialog):
         is_rtl = self.translator.current_language == 'ar'
         btn_spacing = AppStyles.get_spacing(3) if is_rtl else AppStyles.get_spacing(2)  # 24px RTL for icon margins
         backup_btn_layout.setSpacing(btn_spacing)
-        self.btn_create_backup = QPushButton()
-        setup_icon_button(self.btn_create_backup, 'btn_create_backup', self.translator.tr('btn_create_backup'))
-        # Disable autoDefault to prevent Enter key from triggering buttons unexpectedly
-        self.btn_create_backup.setAutoDefault(False)
-        self.btn_create_backup.setDefault(False)
+        self.btn_create_backup = self._make_action_button(
+            'btn_create_backup', self.translator.tr('btn_create_backup'),
+            variant='success', icon_only=False
+        )
         self.btn_create_backup.clicked.connect(self.create_backup)
         backup_btn_layout.addWidget(self.btn_create_backup, alignment=Qt.AlignVCenter)
         backup_btn_layout.addStretch()
@@ -261,52 +332,60 @@ class BackupRestoreDialog(QDialog):
             self.translator.tr('lbl_date'),
             self.translator.tr('lbl_actions')
         ])
-        self.backup_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.backup_table.setSelectionMode(QTableWidget.SingleSelection)
-        self.backup_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.backup_table.setObjectName('backupTable')
+        configure_table(self.backup_table, multi_select=False)
+        self.backup_table.setAccessibleName(self.translator.tr(
+            'lbl_backup', default='Available backups'
+        ))
         self.backup_table.horizontalHeader().setStretchLastSection(True)
         self.backup_table.setColumnWidth(0, 300)
         self.backup_table.setColumnWidth(1, 100)
         self.backup_table.setColumnWidth(2, 150)
         
         restore_layout.addWidget(self.backup_table)
+        self.backup_state_label = QLabel()
+        self.backup_state_label.setObjectName('tableStateLabel')
+        self.backup_state_label.setAlignment(Qt.AlignCenter)
+        self.backup_state_label.setWordWrap(True)
+        self.backup_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
+        self.backup_state_label.setVisible(False)
+        restore_layout.addWidget(self.backup_state_label)
+        from widgets.pagination_widget import PaginationWidget
+        self.backup_pagination = PaginationWidget(self.translator, self)
+        self.backup_pagination.page_changed.connect(self._render_backups_page)
+        self.backup_pagination.page_size_changed.connect(self._render_backups_page)
+        restore_layout.addWidget(self.backup_pagination)
         
         # Restore buttons - properly aligned with margins to prevent icon cropping
         restore_btn_layout = QHBoxLayout()
         restore_btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
         restore_btn_layout.setSpacing(btn_spacing)
-        self.btn_restore = QPushButton()
-        setup_icon_button(self.btn_restore, 'btn_restore', self.translator.tr('btn_restore'))
-        self.btn_restore.setAutoDefault(False)
-        self.btn_restore.setDefault(False)
+        self.btn_restore = self._make_action_button(
+            'btn_restore', self.translator.tr('btn_restore'), variant='primary'
+        )
         self.btn_restore.clicked.connect(self.restore_backup)
         self.btn_restore.setEnabled(False)
         
-        self.btn_merge = QPushButton()
-        setup_icon_button(self.btn_merge, 'btn_merge', self.translator.tr('btn_merge'))
-        self.btn_merge.setAutoDefault(False)
-        self.btn_merge.setDefault(False)
+        self.btn_merge = self._make_action_button(
+            'btn_merge', self.translator.tr('btn_merge')
+        )
         self.btn_merge.clicked.connect(self.merge_backup)
         self.btn_merge.setEnabled(False)
         
-        self.btn_restore_file = QPushButton()
-        setup_icon_button(self.btn_restore_file, 'btn_restore_from_file', self.translator.tr('btn_restore_from_file'))
-        self.btn_restore_file.setAutoDefault(False)
-        self.btn_restore_file.setDefault(False)
+        self.btn_restore_file = self._make_action_button(
+            'btn_restore_from_file', self.translator.tr('btn_restore_from_file')
+        )
         self.btn_restore_file.clicked.connect(self.restore_from_file)
         
-        self.btn_delete_backup = QPushButton()
-        setup_icon_button(self.btn_delete_backup, 'btn_delete_backup', self.translator.tr('btn_delete'))
-        self.btn_delete_backup.setProperty('class', 'danger')
-        self.btn_delete_backup.setAutoDefault(False)
-        self.btn_delete_backup.setDefault(False)
+        self.btn_delete_backup = self._make_action_button(
+            'btn_delete_backup', self.translator.tr('btn_delete'), variant='danger'
+        )
         self.btn_delete_backup.clicked.connect(self.delete_backup)
         self.btn_delete_backup.setEnabled(False)
         
-        self.btn_refresh = QPushButton()
-        setup_icon_button(self.btn_refresh, 'btn_refresh', self.translator.tr('btn_refresh'))
-        self.btn_refresh.setAutoDefault(False)
-        self.btn_refresh.setDefault(False)
+        self.btn_refresh = self._make_action_button(
+            'btn_refresh', self.translator.tr('btn_refresh'), icon_only=True
+        )
         self.btn_refresh.clicked.connect(self.load_backups)
         
         restore_btn_layout.addWidget(self.btn_restore, alignment=Qt.AlignVCenter)
@@ -333,53 +412,75 @@ class BackupRestoreDialog(QDialog):
         btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
         btn_layout.setSpacing(btn_spacing)
         btn_layout.addStretch()
-        btn_close = QPushButton()
-        setup_icon_button(btn_close, 'btn_close', self.translator.tr('btn_close'))
-        btn_close.setAutoDefault(False)
-        btn_close.setDefault(False)
-        btn_close.clicked.connect(self.accept)
-        btn_layout.addWidget(btn_close, alignment=Qt.AlignVCenter)
+        self.btn_close = self._make_action_button(
+            'btn_close', self.translator.tr('btn_close')
+        )
+        self.btn_close.clicked.connect(self.accept)
+        btn_layout.addWidget(self.btn_close, alignment=Qt.AlignVCenter)
         layout.addLayout(btn_layout)
         
         # Connect table selection
         self.backup_table.selectionModel().selectionChanged.connect(self.on_selection_changed)
     
     def load_backups(self):
-        """Load list of backups"""
+        """Load and page the available backup records."""
         try:
-            backups = self.backup_manager.get_backup_list()
-            self.backup_table.setRowCount(len(backups))
-            
-            for row, backup in enumerate(backups):
-                # Filename
-                filename_item = QTableWidgetItem(backup['filename'])
-                filename_item.setData(Qt.UserRole, backup['path'])
-                self.backup_table.setItem(row, 0, filename_item)
-                
-                # Size
-                size_mb = backup['size'] / (1024 * 1024)
-                size_item = QTableWidgetItem(f"{size_mb:.2f} MB")
-                self.backup_table.setItem(row, 1, size_item)
-                
-                # Date
-                try:
-                    date_obj = datetime.fromisoformat(backup['created_at'])
-                    date_str = date_obj.strftime('%Y-%m-%d %H:%M:%S')
-                except:
-                    date_str = backup['created_at']
-                date_item = QTableWidgetItem(date_str)
-                self.backup_table.setItem(row, 2, date_item)
-                
-                # Encrypted indicator
-                encrypted = "🔒" if backup.get('is_encrypted', False) else ""
-                encrypted_item = QTableWidgetItem(encrypted)
-                self.backup_table.setItem(row, 3, encrypted_item)
-            
-            self.status_label.setText(f"{len(backups)} {self.translator.tr('msg_backups_found').lower()}")
+            self.backups = list(self.backup_manager.get_backup_list() or [])
+            previous_page = self.backup_pagination.current_page
+            self.backup_pagination.set_total_items(len(self.backups))
+            self.backup_pagination.current_page = min(
+                previous_page, self.backup_pagination.total_pages
+            )
+            self.backup_pagination.page_spin.setValue(
+                self.backup_pagination.current_page
+            )
+            self._render_backups_page()
+            self.backup_state_label.setText(
+                self.translator.tr('table_empty', default='No backups are available.')
+            )
+            self.backup_state_label.setVisible(not bool(self.backups))
+            self.on_selection_changed()
+            self.status_label.setText(
+                f"{len(self.backups)} {self.translator.tr('msg_backups_found').lower()}"
+            )
         except Exception as e:
             logger.error(f"Error loading backups: {e}")
+            self.backup_state_label.setText(
+                f"{self.translator.tr('table_error', default='Unable to load backups.')} "
+                f"{self.translator.tr('table_recover', default='Use Refresh to try again.')}"
+            )
+            self.backup_state_label.setVisible(True)
+            self.status_label.setText(self.translator.tr('table_error', default='Unable to load backups.'))
             QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
-    
+
+    def _render_backups_page(self, _page=None):
+        """Render the active backup page without changing restore semantics."""
+        backups = list(getattr(self, 'backups', []) or [])
+        start, end = self.backup_pagination.get_page_range()
+        page_backups = backups[start:end]
+        self.backup_table.setRowCount(len(page_backups))
+        for row, backup in enumerate(page_backups):
+            filename_item = set_item_with_tooltip(
+                self.backup_table, row, 0, backup['filename']
+            )
+            filename_item.setData(Qt.UserRole, backup['path'])
+            size_mb = backup['size'] / (1024 * 1024)
+            set_item_with_tooltip(self.backup_table, row, 1, f"{size_mb:.2f} MB")
+            try:
+                date_obj = datetime.fromisoformat(backup['created_at'])
+                date_str = date_obj.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                date_str = backup['created_at']
+            set_item_with_tooltip(self.backup_table, row, 2, date_str)
+            encrypted_item = QTableWidgetItem()
+            if backup.get('is_encrypted', False):
+                encrypted_item.setIcon(get_icon('lock', 18))
+                encrypted_item.setToolTip(self.translator.tr('backup_preview_encrypted'))
+                encrypted_item.setData(Qt.AccessibleTextRole, self.translator.tr('backup_preview_encrypted'))
+            self.backup_table.setItem(row, 3, encrypted_item)
+        self.backup_table.resizeColumnsToContents()
+        self.backup_table.setColumnWidth(0, 300)
+
     def on_selection_changed(self):
         """Handle table selection change"""
         has_selection = len(self.backup_table.selectedItems()) > 0
@@ -403,7 +504,7 @@ class BackupRestoreDialog(QDialog):
             self.progress_bar.setRange(0, 0)  # Indeterminate
             self.status_label.setText(self.translator.tr('msg_creating_backup'))
             
-            self.backup_thread = BackupThread(self.backup_manager, 'MANUAL')
+            self.backup_thread = BackupThread(self.backup_manager, 'MANUAL', self.translator)
             self.backup_thread.finished.connect(self.on_backup_finished)
             self.backup_thread.progress.connect(self.status_label.setText)
             self.backup_thread.start()
@@ -447,7 +548,7 @@ class BackupRestoreDialog(QDialog):
             self.progress_bar.setRange(0, 0)
             self.status_label.setText(self.translator.tr('msg_restoring_backup'))
             
-            self.restore_thread = RestoreThread(self.backup_manager, backup_path, merge=False)
+            self.restore_thread = RestoreThread(self.backup_manager, backup_path, merge=False, translator=self.translator)
             self.restore_thread.finished.connect(self.on_restore_finished)
             self.restore_thread.progress.connect(self.status_label.setText)
             self.restore_thread.start()
@@ -478,7 +579,7 @@ class BackupRestoreDialog(QDialog):
             self.progress_bar.setRange(0, 0)
             self.status_label.setText(self.translator.tr('msg_merging_backup'))
             
-            self.restore_thread = RestoreThread(self.backup_manager, backup_path, merge=True)
+            self.restore_thread = RestoreThread(self.backup_manager, backup_path, merge=True, translator=self.translator)
             self.restore_thread.finished.connect(self.on_restore_finished)
             self.restore_thread.progress.connect(self.status_label.setText)
             self.restore_thread.start()
@@ -534,9 +635,22 @@ class BackupRestoreDialog(QDialog):
         if copy_to_folder:
             try:
                 import shutil
-                dest = Path(self.backup_manager.backup_dir) / Path(filename).name
-                if Path(filename).resolve() != dest.resolve():
-                    shutil.copy2(filename, dest)
+                source_path = Path(filename).resolve()
+                backup_dir = Path(self.backup_manager.backup_dir).resolve()
+                dest = backup_dir / source_path.name
+                if source_path != dest:
+                    # Never overwrite an existing backup imported under the
+                    # same filename; retain every user-selected backup.
+                    if dest.exists():
+                        stem, suffix = dest.stem, dest.suffix
+                        counter = 1
+                        while True:
+                            candidate = backup_dir / f"{stem}_{counter}{suffix}"
+                            if not candidate.exists():
+                                dest = candidate
+                                break
+                            counter += 1
+                    shutil.copy2(source_path, dest)
                     filename = str(dest)
             except Exception as e:
                 logger.warning(f"Could not copy backup to folder: {e}")
@@ -552,7 +666,7 @@ class BackupRestoreDialog(QDialog):
             else self.translator.tr('msg_restoring_backup')
         )
         
-        self.restore_thread = RestoreThread(self.backup_manager, filename, merge=merge)
+        self.restore_thread = RestoreThread(self.backup_manager, filename, merge=merge, translator=self.translator)
         self.restore_thread.finished.connect(self.on_restore_finished)
         self.restore_thread.progress.connect(self.status_label.setText)
         self.restore_thread.start()

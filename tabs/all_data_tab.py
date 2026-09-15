@@ -3,12 +3,14 @@ All Data Display Tab - Unified view of all data (Read-Only)
 Page-specific buttons: Filter by Type, Quick View, Generate Report
 """
 from typing import List, Optional, Dict
+import os
 from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QLineEdit, QLabel, QMessageBox, QFileDialog,
-    QHeaderView, QDialog, QComboBox, QGroupBox, QSplitter
+    QHeaderView, QDialog, QComboBox, QGroupBox, QSplitter,
+    QMenu, QAction, QApplication, QAbstractItemView
 )
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QColor, QFont
@@ -17,8 +19,9 @@ from core.toolbar_factory import ToolbarFactory, ToolbarConfig, ButtonConfig
 from db.db_manager import DatabaseManager
 from translations.translations import TranslationManager
 from styles.styles import AppStyles
-from icons.icon_manager import setup_icon_button
+from icons.icon_manager import get_icon
 from utils.logger import get_logger
+from utils.export_safety import sanitize_row
 
 logger = get_logger(__name__)
 
@@ -41,8 +44,14 @@ class AllDataDisplayTab(QWidget):
         self.translator = translator
         self.toolbar_factory = ToolbarFactory(translator)
         self.data = []
+        # Keep the complete filtered result separate from the current page so
+        # exports, quick reports, and counts are not limited by pagination.
         self.filtered_data = []
+        self.page_data = []
+        self._select_first_after_render = False
         self.current_type_filter = 'all'
+        self._sort_column = None
+        self._sort_order = Qt.AscendingOrder
         
         # Apply RTL/LTR layout direction based on language
         self._apply_layout_direction()
@@ -55,7 +64,7 @@ class AllDataDisplayTab(QWidget):
             ('content_title', translator.tr('lbl_title'), 200),
             ('content_data', translator.tr('lbl_content_data'), 300),
             ('classification', translator.tr('lbl_classification'), 130),
-            ('content_importance', translator.tr('lbl_importance'), 100),
+            ('content_importance', translator.tr('lbl_importance'), 120),
             ('date_content', translator.tr('lbl_date_content'), 150),
             ('content_date_creation', translator.tr('lbl_date_creation'), 150)
         ]
@@ -90,7 +99,13 @@ class AllDataDisplayTab(QWidget):
             show_search=True,
             show_date_filter=True,
             show_header_settings=True,  # Header settings for unified reports
-            page_specific_buttons=[]  # Type filter is separate
+            page_specific_buttons=[
+                ButtonConfig(
+                    key='column_visibility',
+                    icon_key='btn_columns',
+                    callback=self.toggle_column_visibility
+                )
+            ]
         )
     
     def get_callbacks(self) -> Dict[str, callable]:
@@ -137,10 +152,19 @@ class AllDataDisplayTab(QWidget):
         self.title_label.setStyleSheet(AppStyles.get_component_style('page_title'))
         header_layout.addWidget(self.title_label)
         
-        # Read-only badge
-        self.readonly_badge = QLabel("📖 " + self.translator.tr('msg_readonly'))
+        # Read-only badge: graphical icon plus translatable text.
+        readonly_container = QWidget()
+        readonly_layout = QHBoxLayout(readonly_container)
+        readonly_layout.setContentsMargins(0, 0, 0, 0)
+        readonly_layout.setSpacing(AppStyles.get_spacing(1))
+        self.readonly_icon = QLabel()
+        self.readonly_icon.setPixmap(get_icon('preview', 16).pixmap(16, 16))
+        self.readonly_icon.setToolTip(self.translator.tr('msg_readonly'))
+        self.readonly_badge = QLabel(self.translator.tr('msg_readonly'))
         self.readonly_badge.setStyleSheet(AppStyles.get_component_style('readonly_badge'))
-        header_layout.addWidget(self.readonly_badge)
+        readonly_layout.addWidget(self.readonly_icon)
+        readonly_layout.addWidget(self.readonly_badge)
+        header_layout.addWidget(readonly_container)
         header_layout.addStretch()
         
         scroll_layout.addLayout(header_layout, 0)  # stretch factor 0 = fixed
@@ -156,6 +180,14 @@ class AllDataDisplayTab(QWidget):
         type_filter = self._create_type_filter()
         type_filter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         scroll_layout.addWidget(type_filter, 0)  # stretch factor 0 = fixed
+
+        self.result_summary_label = QLabel()
+        self.result_summary_label.setObjectName('tableResultSummary')
+        self.result_summary_label.setStyleSheet(AppStyles.get_component_style('table_result_summary'))
+        self.result_summary_label.setAccessibleName(self.translator.tr(
+            'table_result_summary', default='Table result summary'
+        ))
+        scroll_layout.addWidget(self.result_summary_label, 0)
         
         # Container for table area
         table_container = QFrame()
@@ -164,6 +196,34 @@ class AllDataDisplayTab(QWidget):
         table_layout = QVBoxLayout(table_container)
         table_layout.setContentsMargins(0, 0, 0, 0)
         table_layout.setSpacing(0)
+        table_header = QWidget(table_container)
+        table_header.setObjectName('tableSectionHeader')
+        table_header_layout = QHBoxLayout(table_header)
+        table_header_layout.setContentsMargins(12, 8, 12, 8)
+        table_header_layout.setSpacing(8)
+        self.table_section_title = QLabel(
+            self.translator.tr('table_results', default='Results')
+        )
+        self.table_section_title.setObjectName('tableSectionTitle')
+        table_header_layout.addWidget(self.table_section_title)
+        self.table_section_hint = QLabel(
+            self.translator.tr(
+                'table_select_hint',
+                default='Select a row to inspect its details; use Shift or Ctrl for bulk work.'
+            )
+        )
+        self.table_section_hint.setObjectName('tableSectionHint')
+        table_header_layout.addWidget(self.table_section_hint)
+        table_header_layout.addStretch()
+        table_layout.addWidget(table_header, 0)
+        self.table_state_label = QLabel()
+        self.table_state_label.setObjectName('tableStateLabel')
+        self.table_state_label.setAlignment(Qt.AlignCenter)
+        self.table_state_label.setWordWrap(True)
+        self.table_state_label.setMinimumHeight(48)
+        self.table_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
+        self.table_state_label.setVisible(False)
+        table_layout.addWidget(self.table_state_label, 0)
         
         # Splitter for table and preview
         self.splitter = QSplitter(Qt.Vertical)
@@ -208,12 +268,17 @@ class AllDataDisplayTab(QWidget):
         self.pagination.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(self.pagination, 0)
         
-        # Status bar - fixed at bottom, always visible
+        # Keep the status channel for recoverable errors only. Pagination is the
+        # single source of truth for ranges; the summary strip carries totals.
         self.status_label = QLabel(self.translator.tr('msg_ready'))
+        self.status_label.setObjectName('tableStatusMessage')
         self.status_label.setStyleSheet(AppStyles.get_component_style('status_label'))
         self.status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.status_label.setFixedHeight(25)
+        self.status_label.setVisible(False)
         layout.addWidget(self.status_label, 0)
+        self._update_action_state()
+        self._update_result_summary()
     
     def _create_type_filter(self) -> QWidget:
         """Create type filter section with dropdown - Page-Specific for All Data tab"""
@@ -261,18 +326,20 @@ class AllDataDisplayTab(QWidget):
         
         layout.addStretch()
         
-        # Quick view and report buttons
-        self.btn_quick_view = QPushButton()
-        setup_icon_button(self.btn_quick_view, 'btn_quick_view', 
-                         self.translator.tr('btn_quick_view'))
+        # Quick view is a frequent review action; report generation is the
+        # higher-value labeled action for this read-only workspace.
+        self.btn_quick_view = self.toolbar_factory._create_labeled_action_button(
+            'btn_quick_view', 'btn_quick_view', self.translator.tr('btn_quick_view'),
+            icon_only=False
+        )
         self.btn_quick_view.clicked.connect(self.quick_view)
         layout.addWidget(self.btn_quick_view)
-        
-        self.btn_generate_report = QPushButton()
-        setup_icon_button(self.btn_generate_report, 'btn_generate_report',
-                         self.translator.tr('btn_generate_report'))
+
+        self.btn_generate_report = self.toolbar_factory._create_labeled_action_button(
+            'btn_generate_report', 'btn_generate_report', self.translator.tr('btn_generate_report'),
+            style_class='purple', icon_only=False
+        )
         self.btn_generate_report.clicked.connect(self.generate_report)
-        self.btn_generate_report.setStyleSheet(AppStyles.get_button_style('purple'))
         layout.addWidget(self.btn_generate_report)
         
         return group
@@ -287,11 +354,15 @@ class AllDataDisplayTab(QWidget):
         
         table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setSelectionMode(QTableWidget.SingleSelection)
+        table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setSortingEnabled(True)
+        table.setFocusPolicy(Qt.StrongFocus)
+        table.setTextElideMode(Qt.ElideRight)
+        table.setContextMenuPolicy(Qt.CustomContextMenu)
+        # Sorting is applied to the complete filtered result before pagination.
+        table.setSortingEnabled(False)
         table.verticalHeader().setVisible(False)
-        table.setWordWrap(True)
+        table.setWordWrap(False)
         
         # Enable internal scrollbars for table data navigation
         # These scrollbars allow scrolling within the table data
@@ -303,12 +374,19 @@ class AllDataDisplayTab(QWidget):
         
         header = table.horizontalHeader()
         header.setStretchLastSection(True)
+        header.setMinimumSectionSize(72)
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
         
         table.setColumnWidth(0, 50)
         for i, (_, _, width) in enumerate(self.columns):
             table.setColumnWidth(i + 1, width)
         
         table.itemSelectionChanged.connect(self.on_selection_changed)
+        table.customContextMenuRequested.connect(self._show_table_context_menu)
+        table.horizontalHeader().sectionClicked.connect(
+            self.on_table_sort_requested
+        )
         table.itemDoubleClicked.connect(self.quick_view)
         
         return table
@@ -336,14 +414,167 @@ class AllDataDisplayTab(QWidget):
         
         self.apply_filters()
     
+    @staticmethod
+    def _sort_value(value):
+        """Return a stable key for mixed unified-view values."""
+        if value is None:
+            return (2, '')
+        if isinstance(value, bool):
+            return (0, int(value))
+        if isinstance(value, (int, float)):
+            return (0, float(value))
+        if isinstance(value, datetime):
+            return (0, value.timestamp())
+        return (1, str(value).casefold())
+
+    def _sort_filtered_rows(self, rows):
+        """Sort the complete filtered unified-view result."""
+        if self._sort_column is None:
+            return list(rows)
+        if self._sort_column == 0:
+            indexed_rows = list(enumerate(rows))
+            indexed_rows.sort(
+                key=lambda pair: pair[0],
+                reverse=self._sort_order == Qt.DescendingOrder
+            )
+            return [row for _, row in indexed_rows]
+
+        data_column = self._sort_column - 1
+        if data_column < 0 or data_column >= len(self.columns):
+            return list(rows)
+        key_name = self.columns[data_column][0]
+        return sorted(
+            rows,
+            key=lambda row: self._sort_value(row.get(key_name)),
+            reverse=self._sort_order == Qt.DescendingOrder
+        )
+
+    def on_table_sort_requested(self, column: int):
+        """Sort all filtered records when a table header is clicked."""
+        if self._sort_column == column:
+            self._sort_order = (
+                Qt.DescendingOrder
+                if self._sort_order == Qt.AscendingOrder
+                else Qt.AscendingOrder
+            )
+        else:
+            self._sort_column = column
+            self._sort_order = Qt.AscendingOrder
+
+        header = self.data_table.horizontalHeader()
+        header.blockSignals(True)
+        header.setSortIndicator(self._sort_column, self._sort_order)
+        header.blockSignals(False)
+
+        self._full_filtered_data = self._sort_filtered_rows(
+            getattr(self, 'filtered_data', [])
+        )
+        self.filtered_data = list(self._full_filtered_data)
+        self.pagination.set_total_items(len(self._full_filtered_data))
+        self.apply_pagination()
+        self.on_selection_changed()
+
     def on_selection_changed(self):
-        """Handle selection change"""
+        """Update preview and keep read-only review actions stateful."""
         current_row = self.data_table.currentRow()
-        if current_row >= 0 and current_row < len(self.filtered_data):
-            row_data = self.filtered_data[current_row]
-            self.preview_panel.update_preview(row_data)
+        if current_row >= 0:
+            item = self.data_table.item(current_row, 0)
+            row_data = item.data(Qt.UserRole) if item else None
+            if not isinstance(row_data, dict) and current_row < len(self.page_data):
+                row_data = self.page_data[current_row]
+            if isinstance(row_data, dict):
+                self.preview_panel.update_preview(row_data)
+            else:
+                self.preview_panel.clear_preview()
         else:
             self.preview_panel.clear_preview()
+        self._update_action_state()
+        self._update_result_summary()
+
+    def _update_action_state(self):
+        has_selection = bool(self.data_table.selectedItems()) if hasattr(self, 'data_table') else False
+        if hasattr(self, 'btn_quick_view'):
+            self.btn_quick_view.setEnabled(has_selection)
+        if hasattr(self, 'btn_generate_report'):
+            self.btn_generate_report.setEnabled(bool(self.filtered_data))
+
+    def _update_result_summary(self):
+        if not hasattr(self, 'result_summary_label'):
+            return
+        filtered = len(self.filtered_data or [])
+        total = len(self.data or [])
+        selected = len(self.data_table.selectionModel().selectedRows()) if hasattr(self, 'data_table') else 0
+        records = self.translator.tr('lbl_records', default='records')
+        selected_text = self.translator.tr('table_selected', default='selected')
+        total_text = self.translator.tr('table_total', default='total')
+        self.result_summary_label.setText(
+            f"{filtered} {records}" + (
+                f" · {total} {total_text}" if filtered != total else ''
+            ) + f" · {selected} {selected_text}"
+        )
+
+    def _set_table_state(self, state: str, message: str = '', recoverable: bool = False):
+        if not hasattr(self, 'table_state_label'):
+            return
+        if state == 'ready':
+            self.table_state_label.clear()
+            self.table_state_label.setVisible(False)
+            return
+        defaults = {
+            'empty': self.translator.tr('table_empty', default='No records match the current view.'),
+            'loading': self.translator.tr('table_loading', default='Loading records…'),
+            'error': self.translator.tr('table_error', default='Unable to load records.'),
+        }
+        text = message or defaults.get(state, defaults['error'])
+        if recoverable:
+            text += '  ' + self.translator.tr('table_recover', default='Use Refresh to try again.')
+        self.table_state_label.setText(text)
+        self.table_state_label.setProperty('state', state)
+        self.table_state_label.setVisible(True)
+
+    def _show_table_context_menu(self, position):
+        item = self.data_table.itemAt(position)
+        if item is not None:
+            self.data_table.setCurrentItem(item)
+        menu = QMenu(self.data_table)
+        menu.setObjectName('tableContextMenu')
+        copy_action = QAction(get_icon('btn_copy', 18), self.translator.tr('btn_copy', default='Copy value'), menu)
+        copy_action.setEnabled(bool(self.data_table.currentItem()))
+        copy_action.triggered.connect(lambda: QApplication.clipboard().setText(
+            self.data_table.currentItem().text() if self.data_table.currentItem() else ''
+        ))
+        menu.addAction(copy_action)
+        preview_action = QAction(get_icon('btn_quick_view', 18), self.translator.tr('btn_quick_view'), menu)
+        preview_action.setEnabled(bool(self.data_table.currentItem()))
+        preview_action.triggered.connect(self.quick_view)
+        menu.addAction(preview_action)
+        menu.exec_(self.data_table.viewport().mapToGlobal(position))
+
+    def toggle_column_visibility(self):
+        from PyQt5.QtWidgets import QCheckBox, QDialogButtonBox
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.translator.tr('column_visibility', default='Columns'))
+        dialog.setMinimumWidth(320)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(self.translator.tr(
+            'column_visibility_hint', default='Choose which columns are visible in this view.'
+        )))
+        checks = []
+        for index, (_, label, _) in enumerate(self.columns, start=1):
+            check = QCheckBox(label, dialog)
+            check.setChecked(not self.data_table.isColumnHidden(index))
+            layout.addWidget(check)
+            checks.append((index, check))
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec_() == QDialog.Accepted:
+            for index, check in checks:
+                self.data_table.setColumnHidden(index, not check.isChecked())
+            self.status_label.setText(self.translator.tr(
+                'column_visibility_saved', default='Column visibility updated.'
+            ))
     
     def on_search(self, text: str = None):
         """Handle search"""
@@ -365,6 +596,7 @@ class AllDataDisplayTab(QWidget):
     
     def apply_filters(self):
         """Apply all filters"""
+        self._select_first_after_render = True
         search_edit = self.toolbar_factory.get_search_edit()
         date_from = self.toolbar_factory.get_date_from()
         date_to = self.toolbar_factory.get_date_to()
@@ -407,7 +639,8 @@ class AllDataDisplayTab(QWidget):
             
             self.filtered_data.append(row)
         
-        # Store full filtered data for pagination
+        # Store full filtered data for pagination, preserving the active sort.
+        self.filtered_data = self._sort_filtered_rows(self.filtered_data)
         self._full_filtered_data = self.filtered_data.copy()
         
         # Update pagination
@@ -421,27 +654,26 @@ class AllDataDisplayTab(QWidget):
         """Apply pagination to display current page"""
         if not hasattr(self, '_full_filtered_data') or self._full_filtered_data is None:
             self._full_filtered_data = self.filtered_data.copy() if self.filtered_data else []
+        if self._sort_column is not None:
+            self._full_filtered_data = self._sort_filtered_rows(self._full_filtered_data)
+            self.filtered_data = list(self._full_filtered_data)
         
         start, end = self.pagination.get_page_range()
         
-        # Get paginated data from full filtered data
-        self.filtered_data = self._full_filtered_data[start:end]
+        # Get paginated data from full filtered data without replacing the
+        # complete result set used by export/report actions.
+        self.page_data = self._full_filtered_data[start:end]
         
         self.refresh_display()
         
-        # Update status
-        page_count = len(self.filtered_data)
+        # Pagination owns the range label; keep the secondary status channel
+        # hidden for normal results to avoid duplicate count messaging.
         total_filtered = len(self._full_filtered_data)
-        total_count = len(self.data) if self.data else 0
-        
-        showing_text = self.translator.tr('pagination_showing') if hasattr(self.translator, 'tr') else 'Showing'
-        of_text = self.translator.tr('pagination_of') if hasattr(self.translator, 'tr') else 'of'
-        records_text = self.translator.tr('lbl_records') if hasattr(self.translator, 'tr') else 'records'
-        
-        if total_filtered < total_count:
-            self.status_label.setText(f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_filtered} ({total_count} {records_text})")
-        else:
-            self.status_label.setText(f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_count} {records_text}")
+        self.status_label.setText(self.translator.tr('msg_ready', default='Ready'))
+        self.status_label.setVisible(False)
+        self._set_table_state('empty' if not total_filtered else 'ready')
+        self._update_result_summary()
+        self._update_action_state()
     
     def on_page_changed(self, page: int):
         """Handle page change"""
@@ -475,13 +707,13 @@ class AllDataDisplayTab(QWidget):
         """Refresh table display"""
         self.data_table.setSortingEnabled(False)
         self.data_table.setRowCount(0)
-        self.data_table.setRowCount(len(self.filtered_data))
+        self.data_table.setRowCount(len(self.page_data))
         
         # Row colors that match the filter button colors
         type_colors = {
-            'source': '#E8F8F5',   # Light green - matches Sources button
-            'content': '#FEF9E7',  # Light orange - matches Contents button
-            'analysis': '#F5EEF8'  # Light purple - matches Analysis button
+            'source': '#173B35' if AppStyles.is_dark_theme() else '#E8F8F5',
+            'content': '#493A1A' if AppStyles.is_dark_theme() else '#FEF9E7',
+            'analysis': '#34254A' if AppStyles.is_dark_theme() else '#F5EEF8'
         }
         
         # Get the starting row number based on pagination
@@ -490,14 +722,15 @@ class AllDataDisplayTab(QWidget):
             start, _ = self.pagination.get_page_range()
             start_row_num = start + 1
         
-        for row_idx, row_data in enumerate(self.filtered_data):
+        for row_idx, row_data in enumerate(self.page_data):
             # Row number (reflects actual position in full data)
             actual_row_num = start_row_num + row_idx
             row_num_item = QTableWidgetItem(str(actual_row_num))
             row_num_item.setTextAlignment(Qt.AlignCenter)
             row_num_item.setData(Qt.UserRole, row_data)
-            row_num_item.setBackground(QColor('#F8F9FA'))
+            row_num_item.setBackground(QColor(AppStyles.get_color('ROW_NUM_BG')))
             row_num_item.setFont(QFont('Segoe UI', 9, QFont.Bold))
+            row_num_item.setToolTip(str(actual_row_num))
             self.data_table.setItem(row_idx, 0, row_num_item)
             
             # Get row color based on type
@@ -511,23 +744,26 @@ class AllDataDisplayTab(QWidget):
                 
                 item = QTableWidgetItem(display_value)
                 item.setData(Qt.UserRole, row_data)
-                item.setTextAlignment(Qt.AlignLeft | Qt.AlignTop)
+                item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
                 item.setBackground(row_color)
+                item.setToolTip(display_value)
                 self.data_table.setItem(row_idx, col_idx + 1, item)
-            
-            self.data_table.resizeRowToContents(row_idx)
+
+            self.data_table.setRowHeight(row_idx, 38)
         
-        self.data_table.setSortingEnabled(True)
+        # Keep native row sorting disabled; sorting is applied to all filtered
+        # records before the page is rendered.
+        self.data_table.setSortingEnabled(False)
         
-        # Automatically select first row if data exists to show preview by default
-        if len(self.filtered_data) > 0:
+        # Select an initial/reloaded result for preview, not every page change.
+        if len(self.page_data) > 0 and self._select_first_after_render:
             from PyQt5.QtCore import QTimer
-            # Use QTimer to select after table is fully rendered
+            self._select_first_after_render = False
             QTimer.singleShot(50, lambda: self._select_first_row())
     
     def _select_first_row(self):
         """Select the first row to trigger preview update"""
-        if self.data_table.rowCount() > 0:
+        if self.data_table.rowCount() > 0 and not self.data_table.selectionModel().selectedRows():
             self.data_table.selectRow(0)
             # Ensure the selection is visible
             self.data_table.scrollToItem(self.data_table.item(0, 0))
@@ -554,19 +790,25 @@ class AllDataDisplayTab(QWidget):
         """Deferred data loading to prevent UI flickering during initialization"""
         if not self._data_loaded:
             try:
+                self._set_table_state('loading')
                 self.load_data()
+                if not self.filtered_data:
+                    self._set_table_state('empty')
             except Exception as e:
                 logger.error(f"Error loading data in AllDataDisplayTab: {e}")
+                self._set_table_state('error', str(e), recoverable=True)
     
     def load_data(self):
         """Load all unified data"""
         try:
+            self._select_first_after_render = True
             self.data = DatabaseManager.get_all_data_unified()
             logger.info(f"Loaded {len(self.data)} unified records")
             self._data_loaded = True
             self.apply_filters()
         except Exception as e:
             logger.error(f"Error loading unified data: {e}")
+            self._set_table_state('error', str(e), recoverable=True)
             QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
     
     # ==================== Page-Specific Operations ====================
@@ -574,14 +816,18 @@ class AllDataDisplayTab(QWidget):
     def quick_view(self):
         """Quick view of selected record"""
         current_row = self.data_table.currentRow()
-        if current_row < 0:
+        if current_row < 0 or current_row >= len(self.page_data):
             QMessageBox.warning(self, self.translator.tr('msg_no_selection'),
                               self.translator.tr('msg_select_record'))
             return
         
-        row_data = self.filtered_data[current_row]
+        item = self.data_table.item(current_row, 0)
+        row_data = item.data(Qt.UserRole) if item else None
+        if not isinstance(row_data, dict):
+            row_data = self.page_data[current_row]
         
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QLabel
+        from html import escape
         from styles.styles import AppStyles
         
         dialog = QDialog(self)
@@ -597,12 +843,12 @@ class AllDataDisplayTab(QWidget):
         badge_color = type_colors.get(record_type.lower(), '#7F8C8D')
         
         type_label = QLabel(f"<span style='background-color: {badge_color}; color: white; "
-                          f"padding: 4px 12px; border-radius: 4px;'>{record_type.upper()}</span>")
+                          f"padding: 4px 12px; border-radius: 4px;'>{escape(str(record_type).upper())}</span>")
         layout.addWidget(type_label)
         
-        # Title/Name
-        title = row_data.get('title') or row_data.get('source_name') or 'No Title'
-        title_label = QLabel(f"<h2>{title}</h2>")
+        # Title/Name. Unified rows expose content titles as content_title.
+        title = row_data.get('content_title') or row_data.get('source_name') or 'No Title'
+        title_label = QLabel(f"<h2>{escape(str(title))}</h2>")
         layout.addWidget(title_label)
         
         # Content area
@@ -613,7 +859,7 @@ class AllDataDisplayTab(QWidget):
         content_parts = []
         for key, value in row_data.items():
             if value and key not in ['id', 'record_type']:
-                content_parts.append(f"<b>{key}:</b> {value}")
+                content_parts.append(f"<b>{escape(str(key))}:</b> {escape(str(value))}")
         
         content_edit.setHtml("<br>".join(content_parts))
         layout.addWidget(content_edit)
@@ -641,6 +887,11 @@ class AllDataDisplayTab(QWidget):
                 for i in range(parent.tab_widget.count()):
                     tab = parent.tab_widget.widget(i)
                     if isinstance(tab, ReportsTab):
+                        # Transfer the complete filtered result set, not just
+                        # the current page, into the report workspace.
+                        columns = [col[0] for col in self.columns]
+                        tab.set_data(self.filtered_data, columns=columns,
+                                     title=self.translator.tr('tab_all_data'))
                         parent.tab_widget.setCurrentIndex(i)
                         QMessageBox.information(
                             self,
@@ -757,9 +1008,10 @@ class AllDataDisplayTab(QWidget):
             return
         
         try:
+            success = False
             if export_format == ExportPreviewDialog.FORMAT_EXCEL:
                 from utils.excel_export import export_to_excel
-                export_to_excel(
+                success = export_to_excel(
                     data,
                     self.columns,
                     filepath,
@@ -776,14 +1028,15 @@ class AllDataDisplayTab(QWidget):
                         fieldnames = [col[0] for col in selected_columns]
                         writer = csv.DictWriter(f, fieldnames=fieldnames)
                         header_row = {col[0]: col[1] for col in selected_columns}
-                        writer.writerow(header_row)
+                        writer.writerow(sanitize_row(header_row))
                         for row in data:
                             filtered_row = {key: row.get(key, '') for key in fieldnames}
-                            writer.writerow(filtered_row)
+                            writer.writerow(sanitize_row(filtered_row))
+                success = True
             
             elif export_format == ExportPreviewDialog.FORMAT_WORD:
                 from utils.word_export import export_to_word
-                export_to_word(
+                success = export_to_word(
                     data,
                     self.columns,
                     filepath,
@@ -829,6 +1082,7 @@ class AllDataDisplayTab(QWidget):
                 doc = QTextDocument()
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, ps)
+                success = os.path.isfile(filepath) and os.path.getsize(filepath) > 0
             
             elif export_format == ExportPreviewDialog.FORMAT_JSON:
                 from utils.json_xml_export import export_to_json
@@ -840,7 +1094,7 @@ class AllDataDisplayTab(QWidget):
                         if col_key in row:
                             filtered_row[col_key] = row[col_key]
                     filtered_data.append(filtered_row)
-                export_to_json(filtered_data, filepath)
+                success = export_to_json(filtered_data, filepath)
             
             elif export_format == ExportPreviewDialog.FORMAT_XML:
                 from utils.json_xml_export import export_to_xml
@@ -852,7 +1106,7 @@ class AllDataDisplayTab(QWidget):
                         if col_key in row:
                             filtered_row[col_key] = row[col_key]
                     filtered_data.append(filtered_row)
-                export_to_xml(filtered_data, filepath, root_name='all_data', record_name='record')
+                success = export_to_xml(filtered_data, filepath, root_name='all_data', record_name='record')
             
             elif export_format == ExportPreviewDialog.FORMAT_JSON_LINES:
                 from utils.json_xml_export import export_to_json_lines
@@ -864,7 +1118,12 @@ class AllDataDisplayTab(QWidget):
                         if col_key in row:
                             filtered_row[col_key] = row[col_key]
                     filtered_data.append(filtered_row)
-                export_to_json_lines(filtered_data, filepath)
+                success = export_to_json_lines(filtered_data, filepath)
+            else:
+                raise ValueError(f"Unsupported export format: {export_format}")
+
+            if not success or not os.path.isfile(filepath) or os.path.getsize(filepath) == 0:
+                raise IOError(f"Export did not create a valid output file: {filepath}")
             
             QMessageBox.information(
                 self,
@@ -946,6 +1205,8 @@ class AllDataDisplayTab(QWidget):
                 doc = QTextDocument()
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, settings)
+                if not os.path.isfile(filename) or os.path.getsize(filename) == 0:
+                    raise IOError(f"PDF output was not created: {filename}")
                 
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                        f"{self.translator.tr('msg_exported_to')}:\n{filename}")
@@ -971,9 +1232,13 @@ class AllDataDisplayTab(QWidget):
                 import csv
                 with open(filename, 'w', newline='', encoding='utf-8') as f:
                     if self.filtered_data:
-                        writer = csv.DictWriter(f, fieldnames=self.filtered_data[0].keys())
-                        writer.writeheader()
-                        writer.writerows(self.filtered_data)
+                        fieldnames = list(self.filtered_data[0].keys())
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        writer.writerow(sanitize_row({key: key for key in fieldnames}))
+                        for row in self.filtered_data:
+                            writer.writerow(sanitize_row(row))
+                if not os.path.isfile(filename) or os.path.getsize(filename) == 0:
+                    raise IOError(f"CSV output was not created: {filename}")
                 
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                       f"Exported to:\n{filename}")
@@ -997,13 +1262,15 @@ class AllDataDisplayTab(QWidget):
         if filename:
             try:
                 from utils.excel_export import export_to_excel
-                export_to_excel(
+                success = export_to_excel(
                     self.filtered_data,
                     self.columns,
                     filename,
                     self.translator,
                     'all_data'
                 )
+                if not success or not os.path.isfile(filename):
+                    raise IOError(f"Excel output was not created: {filename}")
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                       f"Exported to:\n{filename}")
             except Exception as e:
@@ -1026,13 +1293,15 @@ class AllDataDisplayTab(QWidget):
         if filename:
             try:
                 from utils.word_export import export_to_word
-                export_to_word(
+                success = export_to_word(
                     self.filtered_data,
                     self.columns,
                     filename,
                     self.translator,
                     'all_data'
                 )
+                if not success or not os.path.isfile(filename):
+                    raise IOError(f"Word output was not created: {filename}")
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                       f"Exported to:\n{filename}")
             except Exception as e:
@@ -1046,7 +1315,7 @@ class AllDataDisplayTab(QWidget):
             ('content_title', self.translator.tr('lbl_title'), 200),
             ('content_data', self.translator.tr('lbl_content_data'), 300),
             ('classification', self.translator.tr('lbl_classification'), 130),
-            ('content_importance', self.translator.tr('lbl_importance'), 100),
+            ('content_importance', self.translator.tr('lbl_importance'), 120),
             ('date_content', self.translator.tr('lbl_date_content'), 150),
             ('content_date_creation', self.translator.tr('lbl_date_creation'), 150)
         ]
@@ -1089,7 +1358,9 @@ class AllDataDisplayTab(QWidget):
         
         # Refresh read-only badge
         if hasattr(self, 'readonly_badge') and self.readonly_badge:
-            self.readonly_badge.setText("📖 " + self.translator.tr('msg_readonly'))
+            self.readonly_badge.setText(self.translator.tr('msg_readonly'))
+            if hasattr(self, 'readonly_icon'):
+                self.readonly_icon.setToolTip(self.translator.tr('msg_readonly'))
         
         # Refresh toolbar translations
         if hasattr(self, 'toolbar_factory'):
@@ -1109,10 +1380,32 @@ class AllDataDisplayTab(QWidget):
         if hasattr(self, 'pagination') and hasattr(self.pagination, 'refresh_translations'):
             self.pagination.refresh_translations()
         
-        # Refresh status label
+        # Refresh status, review actions, and result context.
         if hasattr(self, 'status_label'):
-            count = len(self._full_filtered_data) if hasattr(self, '_full_filtered_data') else 0
-            self.status_label.setText(f"{count} {self.translator.tr('lbl_records')}")
+            self.status_label.setStyleSheet(AppStyles.get_component_style('status_label'))
+            self._update_result_summary()
+        if hasattr(self, 'table_section_title'):
+            self.table_section_title.setText(
+                self.translator.tr('table_results', default='Results')
+            )
+        if hasattr(self, 'table_section_hint'):
+            self.table_section_hint.setText(
+                self.translator.tr(
+                    'table_select_hint',
+                    default='Select a row to inspect its details; use Shift or Ctrl for bulk work.'
+                )
+            )
+            self.pagination.update_display()
+        if hasattr(self, 'btn_quick_view'):
+            self.btn_quick_view.setText(self.translator.tr('btn_quick_view'))
+            self.btn_quick_view.setToolTip(self.translator.tr('btn_quick_view'))
+            self.btn_quick_view.setAccessibleName(self.translator.tr('btn_quick_view'))
+        if hasattr(self, 'btn_generate_report'):
+            self.btn_generate_report.setText(self.translator.tr('btn_generate_report'))
+            self.btn_generate_report.setToolTip(self.translator.tr('btn_generate_report'))
+            self.btn_generate_report.setAccessibleName(self.translator.tr('btn_generate_report'))
+        if hasattr(self, 'table_state_label'):
+            self.table_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
         
         # Refresh type filter group title
         if hasattr(self, 'type_filter_group'):
@@ -1151,6 +1444,9 @@ class AllDataDisplayTab(QWidget):
             
             self.type_filter_combo.blockSignals(False)
         
+        if hasattr(self, 'data_table'):
+            self.data_table.setStyleSheet(AppStyles.get_table_scrollbar_style())
+            self.refresh_display()
         # Refresh preview panel
         if hasattr(self, 'preview_panel') and hasattr(self.preview_panel, 'refresh_translations'):
             self.preview_panel.refresh_translations()

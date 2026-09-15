@@ -97,6 +97,7 @@ class ConfigManager:
             'font_family': 'Segoe UI',
             'auto_save': 'true',
             'auto_save_interval': '300',  # seconds
+            'page_size': '50',
             'max_undo_history': '50'
         }
         
@@ -155,7 +156,8 @@ class ConfigManager:
             'font_size_multiplier': '1.0',
             'screen_reader_support': 'true',
             'keyboard_navigation': 'true',
-            'color_blind_mode': 'false'
+            'focus_indicator': 'true',
+            'color_blind_mode': 'none'
         }
         
         # Save default config

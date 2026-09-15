@@ -156,16 +156,19 @@ class DataValidator:
         sources_schema = ValidationSchema('sources')
         sources_schema.add_rule(ValidationRule('name', 'required', message='Source name is required'))
         sources_schema.add_rule(ValidationRule('name', 'min_length', 2, message='Source name must be at least 2 characters'))
+        sources_schema.add_rule(ValidationRule('type', 'required', message='Source type is required'))
+        sources_schema.add_rule(ValidationRule('link_sources', 'required', message='Source link is required'))
+        sources_schema.add_rule(ValidationRule('link_sources', 'url', message='Link must be a valid URL'))
+        sources_schema.add_rule(ValidationRule('country', 'required', message='Country is required'))
         sources_schema.add_rule(ValidationRule('importance', 'min_value', 0.0, message='Importance must be between 0 and 1'))
         sources_schema.add_rule(ValidationRule('importance', 'max_value', 1.0, message='Importance must be between 0 and 1'))
-        sources_schema.add_rule(ValidationRule('link_sources', 'url', message='Link must be a valid URL'))
         self.schemas['sources'] = sources_schema
         
         # Contents schema
         contents_schema = ValidationSchema('contents')
-        contents_schema.add_rule(ValidationRule('title', 'required', message='Title is required'))
-        contents_schema.add_rule(ValidationRule('title', 'min_length', 2, message='Title must be at least 2 characters'))
+        # Titles are optional in the persisted schema; content itself is not.
         contents_schema.add_rule(ValidationRule('content_data', 'required', message='Content data is required'))
+        contents_schema.add_rule(ValidationRule('sources_id', 'required', message='Source is required'))
         contents_schema.add_rule(ValidationRule('importance', 'min_value', 0.0, message='Importance must be between 0 and 1'))
         contents_schema.add_rule(ValidationRule('importance', 'max_value', 1.0, message='Importance must be between 0 and 1'))
         self.schemas['contents'] = contents_schema

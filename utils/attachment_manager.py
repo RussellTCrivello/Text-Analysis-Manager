@@ -116,6 +116,18 @@ class AttachmentManager:
         sanitized_name = self.sanitize_folder_name(source_name)
         return os.path.join(self.source_folder, sanitized_name)
     
+    def _is_managed_path(self, file_path: str) -> bool:
+        """Return whether a path resolves inside the managed attachment root."""
+        try:
+            Path(file_path).resolve().relative_to(Path(self.source_folder).resolve())
+            return True
+        except (OSError, ValueError):
+            return False
+
+    def is_managed_path(self, file_path: str) -> bool:
+        """Public path-classification helper for attachment UI workflows."""
+        return self._is_managed_path(file_path)
+
     def create_source_folder(self, source_name: str) -> Tuple[bool, str]:
         """
         Create a folder for a source.
@@ -143,8 +155,8 @@ class AttachmentManager:
         Returns:
             Tuple of (success, new_path or error_message)
         """
-        if not os.path.exists(file_path):
-            return False, f"File not found: {file_path}"
+        if not os.path.isfile(file_path):
+            return False, f"File not found or not a regular file: {file_path}"
         
         # Create source folder if needed
         success, folder_path = self.create_source_folder(source_name)
@@ -157,12 +169,19 @@ class AttachmentManager:
                 filename = os.path.basename(file_path)
                 dest_path = os.path.join(folder_path, filename)
                 
-                # If file with same name exists, add timestamp
+                # If file with the same name exists, choose a collision-safe
+                # timestamped name without ever overwriting an attachment.
                 if os.path.exists(dest_path):
                     name, ext = os.path.splitext(filename)
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"{name}_{timestamp}{ext}"
-                    dest_path = os.path.join(folder_path, filename)
+                    counter = 1
+                    while True:
+                        candidate = f"{name}_{timestamp}_{counter}{ext}"
+                        dest_path = os.path.join(folder_path, candidate)
+                        if not os.path.exists(dest_path):
+                            filename = candidate
+                            break
+                        counter += 1
                 
                 # Copy the file
                 shutil.copy2(file_path, dest_path)
@@ -205,7 +224,10 @@ class AttachmentManager:
             True if successful, False otherwise
         """
         try:
-            if os.path.exists(file_path):
+            if not self._is_managed_path(file_path):
+                logger.warning(f"Refusing to remove unmanaged attachment path: {file_path}")
+                return False
+            if os.path.isfile(file_path):
                 os.remove(file_path)
                 logger.info(f"Removed attachment: {file_path}")
                 return True
@@ -233,7 +255,7 @@ class AttachmentManager:
             files = []
             for filename in os.listdir(folder_path):
                 file_path = os.path.join(folder_path, filename)
-                if os.path.isfile(file_path):
+                if self._is_managed_path(file_path) and os.path.isfile(file_path):
                     files.append(file_path)
             return sorted(files)
         except Exception as e:
@@ -418,9 +440,13 @@ class AttachmentManager:
             if sys.platform == 'win32':
                 os.startfile(file_path)
             elif sys.platform == 'darwin':
-                subprocess.run(['open', file_path])
+                result = subprocess.run(['open', file_path], check=False)
+                if result.returncode != 0:
+                    return False
             else:
-                subprocess.run(['xdg-open', file_path])
+                result = subprocess.run(['xdg-open', file_path], check=False)
+                if result.returncode != 0:
+                    return False
             return True
         except Exception as e:
             logger.error(f"Failed to open attachment: {e}")

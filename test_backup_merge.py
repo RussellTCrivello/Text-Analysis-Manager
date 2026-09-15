@@ -52,13 +52,13 @@ def run_test(name: str, fn):
     """Run a test, print result"""
     try:
         fn()
-        print(f"  ✓ {name}")
+        print(f"  OK: {name}")
         return True
     except AssertionError as e:
-        print(f"  ✗ {name}: {e}")
+        print(f"  ERROR: {name}: {e}")
         return False
     except Exception as e:
-        print(f"  ✗ {name}: {e}")
+        print(f"  ERROR: {name}: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -128,7 +128,7 @@ def main():
     assert len(dup) == 0, f"Duplicate sources: {dup}"
     passed += 1
     total += 1
-    print(f"  ✓ Merge with duplicates: no duplicates created")
+    print(f"  OK: Merge with duplicates: no duplicates created")
     
     # --- TEST 2: Merge into empty DB ---
     print("\n--- Test 2: Merge into empty DB ---")
@@ -140,7 +140,7 @@ def main():
     assert after['contents'] == backup_counts['contents'], f"Expected {backup_counts['contents']} contents"
     passed += 1
     total += 1
-    print(f"  ✓ Merge into empty DB: {after['sources']} sources, {after['contents']} contents")
+    print(f"  OK: Merge into empty DB: {after['sources']} sources, {after['contents']} contents")
     
     # --- TEST 3: Full restore (replace) ---
     print("\n--- Test 3: Full restore ---")
@@ -158,7 +158,7 @@ def main():
     assert run_sql(db_path, "SELECT 1 FROM sources WHERE name = 'Will Be Replaced'") == [], "Old data should be gone"
     passed += 1
     total += 1
-    print(f"  ✓ Full restore: replaced {before_restore['sources']} with {after['sources']} sources")
+    print(f"  OK: Full restore: replaced {before_restore['sources']} with {after['sources']} sources")
     
     # --- TEST 4: Validation - valid file ---
     print("\n--- Test 4: Validation ---")
@@ -167,14 +167,14 @@ def main():
     assert 'sources_count' in preview and preview['sources_count'] == backup_counts['sources']
     passed += 1
     total += 1
-    print(f"  ✓ Valid backup: {preview}")
+    print(f"  OK: Valid backup: {preview}")
     
     # --- TEST 5: Validation - invalid file ---
     valid, err, _ = mgr.validate_backup_file("nonexistent.sqlite")
     assert not valid and "not found" in err.lower()
     passed += 1
     total += 1
-    print(f"  ✓ Invalid path rejected: {err[:50]}...")
+    print(f"  OK: Invalid path rejected: {err[:50]}...")
     
     # --- TEST 6: Validation - wrong format ---
     with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f:
@@ -187,7 +187,7 @@ def main():
     finally:
         os.unlink(tmp)
     total += 1
-    print(f"  ✓ Non-SQLite file rejected")
+    print(f"  OK: Non-SQLite file rejected")
     
     # --- TEST 7: Old schema (coordinates instead of list_coordinates) ---
     print("\n--- Test 7: Old schema (coordinates column) ---")
@@ -208,7 +208,7 @@ def main():
         if any(c[1] == 'coordinates' for c in cols):
             pass  # Already has coordinates
         os.unlink(old_schema_backup)
-        print(f"  ⊘ Skipped (SQLite version doesn't support RENAME COLUMN)")
+        print(f"  SKIPPED: Skipped (SQLite version doesn't support RENAME COLUMN)")
     else:
         conn.commit()
         conn.close()
@@ -218,7 +218,7 @@ def main():
             ok, msg = mgr.restore_backup(old_schema_backup, merge=True)
             assert ok, msg
             passed += 1
-            print(f"  ✓ Old schema (coordinates) merged successfully")
+            print(f"  OK: Old schema (coordinates) merged successfully")
         else:
             print(f"  ? Old schema validation: {err}")
         total += 1
@@ -248,7 +248,7 @@ def main():
     assert after['sources'] == 2, "Empty backup merge should not remove existing data"
     passed += 1
     total += 1
-    print(f"  ✓ Empty backup merge: existing data preserved")
+    print(f"  OK: Empty backup merge: existing data preserved")
     os.unlink(empty_backup)
     
     # --- TEST 9: Mixed merge (some new, some duplicate) ---
@@ -275,7 +275,7 @@ def main():
     assert run_sql(db_path, "SELECT 1 FROM sources WHERE name = 'Only In Current'"), "Current-only source preserved"
     passed += 1
     total += 1
-    print(f"  ✓ Mixed merge: current + backup data combined")
+    print(f"  OK: Mixed merge: current + backup data combined")
     
     # --- TEST 10: Foreign key integrity ---
     print("\n--- Test 10: Foreign key integrity ---")
@@ -297,7 +297,7 @@ def main():
     assert len(analyses_with_contents) == 0, f"Orphaned analyses: {analyses_with_contents}"
     passed += 1
     total += 1
-    print(f"  ✓ No orphaned records")
+    print(f"  OK: No orphaned records")
     
     # --- Summary ---
     print("\n" + "=" * 70)

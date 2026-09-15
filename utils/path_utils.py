@@ -4,7 +4,7 @@ Path Utilities for Installable Application
 Centralized path resolution for both development and installed (frozen) modes.
 
 When installed (PyInstaller):
-- User data (config, logs, backups, etc.) goes to %APPDATA%\TextAnalysisManager\
+- User data (config, logs, backups, etc.) goes to %APPDATA%\\TextAnalysisManager\\
 - Bundled resources (icons, default config) are read from exe folder or _MEIPASS
 
 This ensures the app works correctly when installed in Program Files (read-only).
@@ -33,7 +33,7 @@ def get_app_data_dir() -> Path:
     Get the user data directory (writable).
     Use for: config, logs, backups, search history, attachments, etc.
     
-    Windows: %APPDATA%\TextAnalysisManager
+    Windows: %APPDATA%\\TextAnalysisManager
     Linux/Mac: ~/.TextAnalysisManager
     """
     if sys.platform == 'win32':

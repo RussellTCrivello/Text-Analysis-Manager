@@ -34,7 +34,7 @@ class SourcesTab(BaseTableTab):
             ('name', translator.tr('lbl_name'), 180),
             ('type', translator.tr('lbl_type'), 120),
             ('link_sources', translator.tr('lbl_link_sources'), 200),
-            ('importance', translator.tr('lbl_importance'), 100),
+            ('importance', translator.tr('lbl_importance'), 120),
             ('country', translator.tr('lbl_country'), 120),
             ('city', translator.tr('lbl_city'), 120),
             ('description', translator.tr('lbl_description'), 250),
@@ -108,7 +108,7 @@ class SourcesTab(BaseTableTab):
             ('name', self.translator.tr('lbl_name'), 180),
             ('type', self.translator.tr('lbl_type'), 120),
             ('link_sources', self.translator.tr('lbl_link_sources'), 200),
-            ('importance', self.translator.tr('lbl_importance'), 100),
+            ('importance', self.translator.tr('lbl_importance'), 120),
             ('country', self.translator.tr('lbl_country'), 120),
             ('city', self.translator.tr('lbl_city'), 120),
             ('description', self.translator.tr('lbl_description'), 250),
@@ -130,12 +130,16 @@ class SourcesTab(BaseTableTab):
             data = DatabaseManager.get_all_sources()
             self.data_table.load_data(data)
             
-            # Initialize pagination with full data
+            # Preserve the user's page when possible; deleting the last row
+            # clamps naturally to the new final page.
             self._full_filtered_data = data.copy()
-            self.pagination.current_page = 1
+            previous_page = self.pagination.current_page
             self.pagination.set_total_items(len(data))
+            self.pagination.current_page = min(previous_page, self.pagination.total_pages)
+            self.pagination.page_spin.setValue(self.pagination.current_page)
             self.apply_pagination()
         except Exception as e:
+            self._set_table_state('error', str(e), recoverable=True)
             QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
     
     def add_record(self):
@@ -219,21 +223,25 @@ class SourcesTab(BaseTableTab):
                         try:
                             # Map CSV columns to database fields
                             source_data = {
-                                'name': row.get('name', row.get('Name', '')),
-                                'type': row.get('type', row.get('Type', '')),
-                                'link_sources': row.get('link_sources', row.get('Link', '')),
+                                'name': row.get('name', row.get('Name', '')) or '',
+                                'type': row.get('type', row.get('Type', '')) or '',
+                                'link_sources': row.get('link_sources', row.get('Link', '')) or '',
                                 'importance': float(row.get('importance', '0') or '0'),
-                                'country': row.get('country', row.get('Country', '')),
-                                'city': row.get('city', row.get('City', '')),
-                                'description': row.get('description', row.get('Description', '')),
-                                'accounts': row.get('accounts', row.get('Accounts', '')),
-                                'note': row.get('note', row.get('Note', '')),
-                                'ownership': row.get('ownership', row.get('Ownership', '')),
+                                'country': row.get('country', row.get('Country', '')) or '',
+                                'city': row.get('city', row.get('City', '')) or None,
+                                'description': row.get('description', row.get('Description', '')) or None,
+                                'accounts': row.get('accounts', row.get('Accounts', '')) or None,
+                                'note': row.get('note', row.get('Note', '')) or None,
+                                'ownership': row.get('ownership', row.get('Ownership', '')) or None,
+                                'date_entry': row.get('date_entry', row.get('Date Entry', '')) or None,
+                                'date_creation': row.get('date_creation', row.get('Date Creation', '')) or None,
                             }
                             
-                            if source_data['name']:
+                            if source_data['name'].strip():
                                 DatabaseManager.add_source(source_data)
                                 imported_count += 1
+                            else:
+                                errors.append(f"Row {row_num}: Source name is required")
                         except Exception as e:
                             errors.append(f"Row {row_num}: {str(e)}")
                 
@@ -314,15 +322,15 @@ class SourcesTab(BaseTableTab):
             
             # Build statistics message
             stats = f"""
-📊 {self.translator.tr('stats_sources_title')}
+{self.translator.tr('stats_sources_title')}
 
 {self.translator.tr('stats_total')}: {total}
 
 {self.translator.tr('stats_by_type')}:
-{chr(10).join(f'  • {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(types.items(), key=lambda x: -x[1])[:10])}
+{chr(10).join(f'  {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(types.items(), key=lambda x: -x[1])[:10])}
 
 {self.translator.tr('stats_by_country')}:
-{chr(10).join(f'  • {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(countries.items(), key=lambda x: -x[1])[:10])}
+{chr(10).join(f'  {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(countries.items(), key=lambda x: -x[1])[:10])}
 
 {self.translator.tr('stats_avg_importance')}: {avg_importance:.1f}%
 """

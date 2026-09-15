@@ -4,6 +4,7 @@ Complete redesign with statistics dashboard, visualizations, and clear interface
 Scientifically-sound UX principles: 8px grid, density modes, WCAG AA compliance
 """
 import sys
+from html import escape
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from collections import defaultdict, Counter
@@ -135,6 +136,7 @@ class StatisticsCard(QFrame):
         self.icon = icon
         self.color = color
         self.density_mode = density_mode
+        self.setObjectName('timelineStatisticsCard')
         self.setup_ui()
     
     def setup_ui(self):
@@ -155,8 +157,9 @@ class StatisticsCard(QFrame):
         header_layout.setSpacing(spacing)
         
         if self.icon:
-            icon_label = QLabel(self.icon)
-            icon_label.setFont(QFont(AppStyles.FONT_FAMILY, 16))
+            icon_label = QLabel()
+            icon_label.setPixmap(get_icon(self.icon, 18).pixmap(18, 18))
+            icon_label.setToolTip(self.title)
             header_layout.addWidget(icon_label)
         
         self.title_label = QLabel(self.title)
@@ -183,13 +186,13 @@ class StatisticsCard(QFrame):
         border_color = f"{accent_color}40"  # 40 = 25% opacity
         
         self.setStyleSheet(f"""
-            QFrame {{
+            QFrame#timelineStatisticsCard {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 {bg_color}, stop:1 {bg_light});
                 border: 2px solid {border_color};
                 border-radius: 8px;
             }}
-            QFrame:hover {{
+            QFrame#timelineStatisticsCard:hover {{
                 border: 2px solid {accent_color};
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 {bg_color}, stop:1 {bg_light});
@@ -259,7 +262,10 @@ class TimelineChartWidget(QWidget):
         chart_layout.setContentsMargins(padding, padding, padding, padding)
         
         if MATPLOTLIB_AVAILABLE:
-            self.figure = Figure(figsize=(8, 3), facecolor='white')
+            self.figure = Figure(
+                figsize=(8, 3),
+                facecolor=colors.get('PANEL_BG', colors.get('WHITE', '#FFFFFF'))
+            )
             self.canvas = FigureCanvas(self.figure)
             chart_layout.addWidget(self.canvas)
         else:
@@ -296,7 +302,19 @@ class TimelineChartWidget(QWidget):
                 self._draw_classification_chart(events, colors)
             else:
                 self._draw_timeline_chart(events, accent_color)
-            
+
+            # Repaint matplotlib surfaces with the active Qt theme rather than
+            # leaving black labels on a dark workspace.
+            panel_bg = colors.get('PANEL_BG', colors.get('WHITE', '#FFFFFF'))
+            text_color = colors.get('TEXT_PRIMARY', '#2C3E50')
+            self.figure.set_facecolor(panel_bg)
+            for axis in self.figure.axes:
+                axis.set_facecolor(panel_bg)
+                axis.tick_params(colors=text_color)
+                axis.xaxis.label.set_color(text_color)
+                axis.yaxis.label.set_color(text_color)
+                for spine in axis.spines.values():
+                    spine.set_color(colors.get('BORDER', '#D7E0EC'))
             self.figure.tight_layout()
             self.canvas.draw()
             
@@ -500,35 +518,42 @@ class AnalysisPanel(QFrame):
     def __init__(self, translator: TranslationManager, parent=None):
         super().__init__(parent)
         self.translator = translator
+        self.setObjectName('timelineAnalysisPanel')
         self.setup_ui()
     
     def setup_ui(self):
         """Setup analysis panel"""
+        colors = AppStyles.get_colors()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(10)
         
         # Title
-        title_text = self.translator.tr('timeline_analysis_title') if self.translator else "📊 Timeline Analysis"
+        title_text = self.translator.tr('timeline_analysis_title') if self.translator else "Timeline Analysis"
         title = QLabel(title_text)
         title.setFont(QFont('Segoe UI', 12, QFont.Bold))
-        title.setStyleSheet("color: #2C3E50; padding: 5px;")
+        title.setStyleSheet(
+            f"color: {colors.get('TEXT_PRIMARY', '#2C3E50')}; padding: 5px;"
+        )
         layout.addWidget(title)
         
         # Analysis content
         no_data_text = self.translator.tr('timeline_analysis_no_data') if self.translator else "No analysis available"
         self.analysis_label = QLabel(no_data_text)
         self.analysis_label.setWordWrap(True)
-        self.analysis_label.setStyleSheet("color: #555; line-height: 1.6; padding: 10px;")
+        self.analysis_label.setStyleSheet(
+            f"color: {colors.get('TEXT_SECONDARY', '#555')}; padding: 10px;"
+        )
         layout.addWidget(self.analysis_label)
         
         # Style
-        self.setStyleSheet("""
-            QFrame {
-                background-color: #F8F9FA;
-                border: 1px solid #DEE2E6;
+        colors = AppStyles.get_colors()
+        self.setStyleSheet(f"""
+            QFrame#timelineAnalysisPanel {{
+                background-color: {colors.get('LIGHT_BG', '#F8F9FA')};
+                border: 1px solid {colors.get('BORDER', '#DEE2EC')};
                 border-radius: 8px;
-            }
+            }}
         """)
     
     def update_analysis(self, events: List[Dict]):
@@ -576,7 +601,7 @@ class AnalysisPanel(QFrame):
             for event_type, count in type_counts.most_common():
                 percentage = (count / total * 100) if total > 0 else 0
                 type_name = event_type.title()
-                analysis_parts.append(f"  • {type_name}: {count} ({percentage:.1f}%)")
+                analysis_parts.append(f"  {type_name}: {count} ({percentage:.1f}%)")
             
             if classifications:
                 top_class_label = self.translator.tr('timeline_analysis_top_classifications') if self.translator else "Top Classifications:"
@@ -584,7 +609,9 @@ class AnalysisPanel(QFrame):
                 analysis_parts.append(f"<b>{top_class_label}</b>")
                 for classification, count in classifications.most_common(5):
                     percentage = (count / total * 100) if total > 0 else 0
-                    analysis_parts.append(f"  • {classification}: {count} ({percentage:.1f}%)")
+                    analysis_parts.append(
+                        f"  {escape(str(classification))}: {count} ({percentage:.1f}%)"
+                    )
             
             if most_active_month:
                 most_active_label = self.translator.tr('timeline_analysis_most_active') if self.translator else "Most Active Period:"
@@ -682,7 +709,7 @@ class TimelineAxisWidget(QWidget):
 class TimelineEventWidget(QFrame):
     """
     Enhanced event widget with F-pattern layout and design system
-    Follows F-pattern reading: Date → Title → Description → Tags
+    Follows F-pattern reading: Date, title, description, and tags
     """
     
     clicked = pyqtSignal(dict)
@@ -694,6 +721,7 @@ class TimelineEventWidget(QFrame):
         self.translator = translator
         self.is_selected = False
         self.density_mode = density_mode
+        self.setObjectName('timelineEventCard')
         self.setup_ui()
         self.setup_styles()
     
@@ -714,7 +742,7 @@ class TimelineEventWidget(QFrame):
         
         # F-Pattern Layout: Date Section (left, prominent)
         date_widget = QWidget()
-        date_widget.setFixedWidth(160)  # Fixed width for date column
+        date_widget.setFixedWidth(200)  # Preserve full dates at comfortable density
         date_layout = QVBoxLayout(date_widget)
         date_layout.setContentsMargins(0, 0, 0, 0)
         date_layout.setSpacing(TimelineDesignSystem.get_spacing(1))  # 8px
@@ -755,7 +783,7 @@ class TimelineEventWidget(QFrame):
         date_layout.addStretch()
         layout.addWidget(date_widget)
         
-        # Content section (F-pattern: Title → Description → Tags)
+        # Content section (F-pattern: title, description, tags)
         content_layout = QVBoxLayout()
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(TimelineDesignSystem.get_spacing(1))  # 8px
@@ -764,6 +792,7 @@ class TimelineEventWidget(QFrame):
         title = self.get_event_title()
         if title:
             self.title_label = QLabel(title)
+            self.title_label.setTextFormat(Qt.PlainText)
             self.title_label.setFont(QFont(AppStyles.FONT_FAMILY, config['font_title'], QFont.Bold))
             self.title_label.setStyleSheet(f"color: {text_primary};")
             self.title_label.setWordWrap(True)
@@ -783,21 +812,25 @@ class TimelineEventWidget(QFrame):
         # Tags/Metadata badges (F-pattern: bottom, badges)
         meta_layout = QHBoxLayout()
         meta_layout.setSpacing(TimelineDesignSystem.get_spacing(1))  # 8px
+        self._meta_badges = []
         
         people = self.get_event_people()
         places = self.get_event_places()
         classification = self.event_data.get('classification')
         
         if people:
-            badge = self.create_badge("👤", people, "#3498DB", config)
+            badge = self.create_badge("user", people, "#3498DB", config)
+            self._meta_badges.append(badge)
             meta_layout.addWidget(badge)
         
         if places:
-            badge = self.create_badge("📍", places, "#E74C3C", config)
+            badge = self.create_badge("location", places, "#E74C3C", config)
+            self._meta_badges.append(badge)
             meta_layout.addWidget(badge)
         
         if classification:
-            badge = self.create_badge("🏷️", classification, "#9B59B6", config)
+            badge = self.create_badge("tag", classification, "#9B59B6", config)
+            self._meta_badges.append(badge)
             meta_layout.addWidget(badge)
         
         meta_layout.addStretch()
@@ -806,11 +839,19 @@ class TimelineEventWidget(QFrame):
         # Source (optional, below tags)
         source = self.get_event_source()
         if source:
-            source_label = QLabel(f"📰 {source}")
+            source_row = QHBoxLayout()
+            source_icon = QLabel()
+            source_icon.setPixmap(get_icon('newspaper', 16).pixmap(16, 16))
+            source_icon.setToolTip(self.translator.tr('lbl_source'))
+            source_label = QLabel(source)
+            source_label.setTextFormat(Qt.PlainText)
             source_label.setFont(QFont(AppStyles.FONT_FAMILY, config['font_meta']))
             muted_color = colors.get('TEXT_MUTED', '#95A5A6')
             source_label.setStyleSheet(f"color: {muted_color}; font-style: italic;")
-            content_layout.addWidget(source_label)
+            source_row.addWidget(source_icon)
+            source_row.addWidget(source_label)
+            source_row.addStretch()
+            content_layout.addLayout(source_row)
         
         layout.addLayout(content_layout, 1)
         self.setCursor(Qt.PointingHandCursor)
@@ -834,16 +875,43 @@ class TimelineEventWidget(QFrame):
                                        badge_padding//2, badge_padding//2)
         badge_layout.setSpacing(badge_padding//2)
         
-        icon_label = QLabel(icon)
-        icon_label.setFont(QFont(AppStyles.FONT_FAMILY, config['font_meta']))
+        icon_label = QLabel()
+        icon_label.setPixmap(get_icon(icon, 16).pixmap(16, 16))
+        icon_label.setToolTip(icon.replace('_', ' ').title())
         text_label = QLabel(text)
+        text_label.setTextFormat(Qt.PlainText)
         text_label.setFont(QFont(AppStyles.FONT_FAMILY, config['font_meta'], QFont.Bold))
         text_label.setStyleSheet(f"color: {accent_color};")
+        text_label.setToolTip(str(text))
+        text_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        badge.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        badge.setProperty('fullBadgeText', str(text))
+        badge.badge_text_label = text_label
         
         badge_layout.addWidget(icon_label)
-        badge_layout.addWidget(text_label)
+        badge_layout.addWidget(text_label, 1)
         
         return badge
+
+    def resizeEvent(self, event):
+        """Keep metadata badges readable when the card becomes narrow."""
+        super().resizeEvent(event)
+        badges = getattr(self, '_meta_badges', [])
+        if not badges:
+            return
+        date_widget = self.layout().itemAt(0).widget() if self.layout() else None
+        date_width = date_widget.width() if date_widget else 0
+        available = max(180, self.width() - date_width - 96)
+        gap_total = max(0, len(badges) - 1) * 8
+        badge_width = max(96, (available - gap_total) // len(badges))
+        for badge in badges:
+            badge.setMaximumWidth(badge_width)
+            text_label = getattr(badge, 'badge_text_label', None)
+            if text_label is not None:
+                text_width = max(40, badge_width - 48)
+                full_text = badge.property('fullBadgeText') or ''
+                metrics = QFontMetrics(text_label.font())
+                text_label.setText(metrics.elidedText(str(full_text), Qt.ElideRight, text_width))
     
     def setup_styles(self):
         """Setup widget styles with WCAG AA compliance"""
@@ -862,7 +930,7 @@ class TimelineEventWidget(QFrame):
         if self.is_selected:
             selected_bg = colors.get('LIGHT_BG', '#EBF5FB')
             self.setStyleSheet(f"""
-                QFrame {{
+                QFrame#timelineEventCard {{
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                         stop:0 {selected_bg}, stop:1 {bg_hover});
                     border: 3px solid {accent_color};
@@ -871,12 +939,12 @@ class TimelineEventWidget(QFrame):
             """)
         else:
             self.setStyleSheet(f"""
-                QFrame {{
+                QFrame#timelineEventCard {{
                     background-color: {bg_color};
                     border: 2px solid {border_color};
                     border-radius: 8px;
                 }}
-                QFrame:hover {{
+                QFrame#timelineEventCard:hover {{
                     border: 2px solid {accent_color};
                     background-color: {bg_hover};
                 }}
@@ -911,15 +979,9 @@ class TimelineEventWidget(QFrame):
             base_font_size = config['font_desc']
             self.desc_label.setFont(QFont(AppStyles.FONT_FAMILY, int(base_font_size * zoom_factor)))
         
-        # Apply zoom to badges and source labels
-        for child in self.findChildren(QLabel):
-            current_font = child.font()
-            if current_font.pointSize() > 0:
-                new_size = int(current_font.pointSize() * zoom_factor)
-                if new_size > 0:
-                    new_font = QFont(current_font)
-                    new_font.setPointSize(new_size)
-                    child.setFont(new_font)
+        # Badge/source labels already use the active density font. Do not
+        # multiply the primary labels a second time; doing so clipped dates
+        # and made comfortable cards unnecessarily tall.
         
         # Apply zoom to padding for better spacing
         base_padding = config['card_padding']
@@ -931,11 +993,16 @@ class TimelineEventWidget(QFrame):
         base_height = config['card_min_height']
         self.setMinimumHeight(int(base_height * zoom_factor))
         
-        # Update date widget width for better visibility
+        # Keep the formatted date readable at every zoom level. The original
+        # fixed column became too narrow once the date font was enlarged,
+        # which clipped the day portion even though the card itself had room.
         date_widget = self.layout().itemAt(0).widget()
         if date_widget:
-            base_width = 160
-            date_widget.setFixedWidth(int(base_width * zoom_factor))
+            base_width = 200
+            required_width = 0
+            if hasattr(self, 'date_label'):
+                required_width = self.date_label.sizeHint().width() + (zoomed_padding * 2) + 8
+            date_widget.setFixedWidth(max(int(base_width * zoom_factor), required_width))
     
     def mousePressEvent(self, event):
         """Handle mouse click"""
@@ -998,13 +1065,13 @@ class TimelineEventWidget(QFrame):
         if 'content_data' in self.event_data and self.event_data['content_data']:
             content = str(self.event_data['content_data'])
             if 'content_title' in self.event_data and self.event_data['content_title']:
-                parts.append(content)
+                parts.append(escape(content))
             elif len(content) > 100:
-                parts.append(content)
+                parts.append(escape(content))
         if 'note' in self.event_data and self.event_data['note']:
-            parts.append(f"<i>Note: {self.event_data['note']}</i>")
+            parts.append(f"<i>Note: {escape(str(self.event_data['note']))}</i>")
         if 'content_note' in self.event_data and self.event_data['content_note']:
-            parts.append(f"<i>Note: {self.event_data['content_note']}</i>")
+            parts.append(f"<i>Note: {escape(str(self.event_data['content_note']))}</i>")
         return "<br>".join(parts) if parts else ""
     
     def get_event_people(self) -> str:
@@ -1104,15 +1171,16 @@ class TimelineWidget(QWidget):
         
         # Statistics Dashboard with design system
         stats_frame = QFrame()
-        primary_color = colors.get('PRIMARY', '#2C3E50')
-        secondary_color = colors.get('SECONDARY', '#34495E')
+        stats_frame.setObjectName('timelineOverview')
         stats_padding = TimelineDesignSystem.get_spacing(2)  # 16px
         
+        # The overview is a quiet summary surface; the cards carry emphasis
+        # individually instead of putting the whole page on a dark banner.
         stats_frame.setStyleSheet(f"""
-            QFrame {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {primary_color}, stop:1 {secondary_color});
-                border-radius: 8px;
+            QFrame#timelineOverview {{
+                background-color: {colors.get('WHITE', '#FFFFFF')};
+                border: 1px solid {colors.get('BORDER', '#D7E0EC')};
+                border-radius: 10px;
                 padding: {stats_padding}px;
             }}
         """)
@@ -1123,10 +1191,10 @@ class TimelineWidget(QWidget):
         filtered_label = self.translator.tr('timeline_stats_filtered')
         sources_label = self.translator.tr('timeline_stats_sources')
         analyses_label = self.translator.tr('timeline_stats_analyses')
-        self.total_card = StatisticsCard(total_label, "0", "📅", "#3498DB", self.density_mode)
-        self.filtered_card = StatisticsCard(filtered_label, "0", "🔍", "#27AE60", self.density_mode)
-        self.sources_card = StatisticsCard(sources_label, "0", "📰", "#E74C3C", self.density_mode)
-        self.analyses_card = StatisticsCard(analyses_label, "0", "📊", "#9B59B6", self.density_mode)
+        self.total_card = StatisticsCard(total_label, "0", "calendar", "#3498DB", self.density_mode)
+        self.filtered_card = StatisticsCard(filtered_label, "0", "preview", "#27AE60", self.density_mode)
+        self.sources_card = StatisticsCard(sources_label, "0", "newspaper", "#E74C3C", self.density_mode)
+        self.analyses_card = StatisticsCard(analyses_label, "0", "statistics", "#9B59B6", self.density_mode)
         
         stats_layout.addWidget(self.total_card, 0, 0)
         stats_layout.addWidget(self.filtered_card, 0, 1)
@@ -1149,13 +1217,41 @@ class TimelineWidget(QWidget):
                 padding: {controls_padding}px;
             }}
         """)
-        controls_layout = QHBoxLayout(controls_frame)
-        controls_layout.setSpacing(TimelineDesignSystem.get_spacing(2))  # 16px
-        
-        # Sort control
-        sort_label = QLabel(self.translator.tr('timeline_sort'))
-        sort_label.setFont(QFont(AppStyles.FONT_FAMILY, 10, QFont.Bold))
-        controls_layout.addWidget(sort_label)
+        controls_outer = QVBoxLayout(controls_frame)
+        controls_outer.setContentsMargins(12, 10, 12, 10)
+        controls_outer.setSpacing(8)
+        self.controls_heading = QLabel(
+            self.translator.tr('timeline_controls_title', default='View controls')
+        )
+        self.controls_heading.setObjectName('timelineControlsTitle')
+        controls_outer.addWidget(self.controls_heading)
+        controls_scroll = QScrollArea(controls_frame)
+        controls_scroll.setObjectName('timelineControlsScroller')
+        controls_scroll.setWidgetResizable(False)
+        controls_scroll.setFrameShape(QFrame.NoFrame)
+        controls_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        controls_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        controls_content = QWidget()
+        controls_row_layout = QHBoxLayout(controls_content)
+        controls_row_layout.setContentsMargins(0, 0, 0, 0)
+        controls_row_layout.setSpacing(TimelineDesignSystem.get_spacing(2))
+        controls_scroll.setWidget(controls_content)
+        controls_outer.addWidget(controls_scroll)
+
+        # Sort control is kept together as one task group.
+        self.order_group = QGroupBox(
+            self.translator.tr('timeline_order_group', default='Order')
+        )
+        order_group = self.order_group
+        order_group.setObjectName('timelineControlGroup')
+        order_layout = QHBoxLayout(order_group)
+        order_layout.setContentsMargins(10, 8, 10, 8)
+        order_layout.setSpacing(8)
+        controls_row_layout.addWidget(order_group)
+        controls_layout = order_layout
+        self.sort_label = QLabel(self.translator.tr('timeline_sort'))
+        self.sort_label.setFont(QFont(AppStyles.FONT_FAMILY, 10, QFont.Bold))
+        controls_layout.addWidget(self.sort_label)
         
         self.sort_by_combo = QComboBox()
         self.sort_by_combo.setFont(QFont(AppStyles.FONT_FAMILY, 10))
@@ -1202,13 +1298,21 @@ class TimelineWidget(QWidget):
         """)
         self.sort_order_combo.currentIndexChanged.connect(self.on_sort_order_changed)
         controls_layout.addWidget(self.sort_order_combo)
-        
-        controls_layout.addSpacing(TimelineDesignSystem.get_spacing(2))  # 16px spacer
-        
-        # Density mode toggle (Hick's Law: simplified 3-button group)
-        density_label = QLabel(self.translator.tr('timeline_density_mode'))
-        density_label.setFont(QFont(AppStyles.FONT_FAMILY, 10, QFont.Bold))
-        controls_layout.addWidget(density_label)
+
+        # Density is a separate decision group, not a continuation of sort.
+        self.density_group = QGroupBox(
+            self.translator.tr('timeline_density_group', default='Density')
+        )
+        density_group = self.density_group
+        density_group.setObjectName('timelineControlGroup')
+        density_layout_outer = QHBoxLayout(density_group)
+        density_layout_outer.setContentsMargins(10, 8, 10, 8)
+        density_layout_outer.setSpacing(8)
+        controls_row_layout.addWidget(density_group)
+        controls_layout = density_layout_outer
+        self.density_label = QLabel(self.translator.tr('timeline_density_mode'))
+        self.density_label.setFont(QFont(AppStyles.FONT_FAMILY, 10, QFont.Bold))
+        controls_layout.addWidget(self.density_label)
         
         self.density_button_group = QButtonGroup(self)
         density_container = QWidget()
@@ -1234,13 +1338,22 @@ class TimelineWidget(QWidget):
         # Style density buttons
         self.update_density_button_styles()
         controls_layout.addWidget(density_container)
-        
-        controls_layout.addStretch()
-        
+
+        self.date_group = QGroupBox(
+            self.translator.tr('timeline_date_group', default='Date range')
+        )
+        date_group = self.date_group
+        date_group.setObjectName('timelineControlGroup')
+        date_layout = QHBoxLayout(date_group)
+        date_layout.setContentsMargins(10, 8, 10, 8)
+        date_layout.setSpacing(8)
+        controls_row_layout.addWidget(date_group)
+        controls_layout = date_layout
+
         # Date filters with design system
-        from_label = QLabel(self.translator.tr('timeline_from'))
-        from_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
-        controls_layout.addWidget(from_label)
+        self.from_label = QLabel(self.translator.tr('timeline_from'))
+        self.from_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
+        controls_layout.addWidget(self.from_label)
         
         self.date_from = QDateEdit()
         self.date_from.setCalendarPopup(True)
@@ -1261,9 +1374,9 @@ class TimelineWidget(QWidget):
         self.date_from.dateChanged.connect(self.apply_filters)
         controls_layout.addWidget(self.date_from)
         
-        to_label = QLabel(self.translator.tr('timeline_to'))
-        to_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
-        controls_layout.addWidget(to_label)
+        self.to_label = QLabel(self.translator.tr('timeline_to'))
+        self.to_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
+        controls_layout.addWidget(self.to_label)
         
         self.date_to = QDateEdit()
         self.date_to.setCalendarPopup(True)
@@ -1304,6 +1417,11 @@ class TimelineWidget(QWidget):
         """)
         clear_btn.clicked.connect(self.clear_filters)
         controls_layout.addWidget(clear_btn)
+        controls_row_layout.addStretch()
+        controls_content.adjustSize()
+        # Reserve room for the group controls plus the horizontal scrollbar;
+        # otherwise the scrollbar covers the combobox/date controls.
+        controls_scroll.setFixedHeight(120)
         
         layout.addWidget(controls_frame)
         
@@ -1318,6 +1436,7 @@ class TimelineWidget(QWidget):
         
         # Chart type selector
         chart_controls_frame = QFrame()
+        chart_controls_frame.setObjectName('timelineChartControls')
         chart_controls_layout = QHBoxLayout(chart_controls_frame)
         chart_controls_layout.setContentsMargins(TimelineDesignSystem.get_spacing(2), 
                                                  TimelineDesignSystem.get_spacing(1),
@@ -1325,9 +1444,9 @@ class TimelineWidget(QWidget):
                                                  TimelineDesignSystem.get_spacing(1))
         chart_controls_layout.setSpacing(TimelineDesignSystem.get_spacing(2))
         
-        chart_type_label = QLabel(self.translator.tr('timeline_chart_select'))
-        chart_type_label.setFont(QFont(AppStyles.FONT_FAMILY, 10, QFont.Bold))
-        chart_controls_layout.addWidget(chart_type_label)
+        self.chart_type_label = QLabel(self.translator.tr('timeline_chart_select'))
+        self.chart_type_label.setFont(QFont(AppStyles.FONT_FAMILY, 10, QFont.Bold))
+        chart_controls_layout.addWidget(self.chart_type_label)
         
         self.chart_type_combo = QComboBox()
         self.chart_type_combo.setFont(QFont(AppStyles.FONT_FAMILY, 10))
@@ -1378,24 +1497,30 @@ class TimelineWidget(QWidget):
         
         # Data section header with print/export buttons
         data_header_frame = QFrame()
-        data_header_layout = QHBoxLayout(data_header_frame)
-        data_header_layout.setContentsMargins(TimelineDesignSystem.get_spacing(2), 
-                                              TimelineDesignSystem.get_spacing(1),
-                                              TimelineDesignSystem.get_spacing(2),
-                                              TimelineDesignSystem.get_spacing(1))
-        data_header_layout.setSpacing(TimelineDesignSystem.get_spacing(2))
-        
-        data_title = QLabel(self.translator.tr('timeline_data_section'))
-        data_title.setFont(QFont(AppStyles.FONT_FAMILY, 12, QFont.Bold))
+        data_header_frame.setObjectName('timelineDataHeader')
+        data_header_layout = QVBoxLayout(data_header_frame)
+        data_header_layout.setContentsMargins(12, 10, 12, 10)
+        data_header_layout.setSpacing(8)
+        data_top_layout = QHBoxLayout()
+        data_top_layout.setContentsMargins(0, 0, 0, 0)
+        data_top_layout.setSpacing(8)
+        data_header_layout.addLayout(data_top_layout)
+        data_filter_content = QWidget()
+        filter_layout = QHBoxLayout(data_filter_content)
+        filter_layout.setContentsMargins(0, 0, 0, 0)
+        filter_layout.setSpacing(8)
+        self.data_title = QLabel(self.translator.tr('timeline_data_section'))
+        self.data_title.setFont(QFont(AppStyles.FONT_FAMILY, 12, QFont.Bold))
         text_primary = colors.get('TEXT_PRIMARY', '#2C3E50')
-        data_title.setStyleSheet(f"color: {text_primary};")
-        data_header_layout.addWidget(data_title)
+        self.data_title.setStyleSheet(f"color: {text_primary};")
+        data_top_layout.addWidget(self.data_title)
+        data_top_layout.addStretch()
         
         # Enhanced search and filter controls
         # General search
-        search_label = QLabel(self.translator.tr('search'))
-        search_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
-        data_header_layout.addWidget(search_label)
+        self.search_label = QLabel(self.translator.tr('search'))
+        self.search_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
+        filter_layout.addWidget(self.search_label)
         
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(self.translator.tr('search_placeholder'))
@@ -1413,12 +1538,12 @@ class TimelineWidget(QWidget):
             }}
         """)
         self.search_input.textChanged.connect(self.on_search_changed)
-        data_header_layout.addWidget(self.search_input)
+        filter_layout.addWidget(self.search_input)
         
         # People filter
-        people_label = QLabel(self.translator.tr('lbl_people', default='People:'))
-        people_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
-        data_header_layout.addWidget(people_label)
+        self.people_label = QLabel(self.translator.tr('lbl_people', default='People:'))
+        self.people_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
+        filter_layout.addWidget(self.people_label)
         
         self.people_filter_combo = QComboBox()
         self.people_filter_combo.setEditable(True)
@@ -1438,12 +1563,12 @@ class TimelineWidget(QWidget):
             }}
         """)
         self.people_filter_combo.currentTextChanged.connect(self.on_people_filter_changed)
-        data_header_layout.addWidget(self.people_filter_combo)
+        filter_layout.addWidget(self.people_filter_combo)
         
         # Places filter
-        places_label = QLabel(self.translator.tr('lbl_places', default='Places:'))
-        places_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
-        data_header_layout.addWidget(places_label)
+        self.places_label = QLabel(self.translator.tr('lbl_places', default='Places:'))
+        self.places_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
+        filter_layout.addWidget(self.places_label)
         
         self.places_filter_combo = QComboBox()
         self.places_filter_combo.setEditable(True)
@@ -1463,12 +1588,12 @@ class TimelineWidget(QWidget):
             }}
         """)
         self.places_filter_combo.currentTextChanged.connect(self.on_places_filter_changed)
-        data_header_layout.addWidget(self.places_filter_combo)
+        filter_layout.addWidget(self.places_filter_combo)
         
         # Classification filter
-        classification_label = QLabel(self.translator.tr('lbl_classification', default='Classification:'))
-        classification_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
-        data_header_layout.addWidget(classification_label)
+        self.classification_label = QLabel(self.translator.tr('lbl_classification', default='Classification:'))
+        self.classification_label.setFont(QFont(AppStyles.FONT_FAMILY, 10))
+        filter_layout.addWidget(self.classification_label)
         
         self.classification_filter_combo = QComboBox()
         self.classification_filter_combo.setEditable(True)
@@ -1488,10 +1613,11 @@ class TimelineWidget(QWidget):
             }}
         """)
         self.classification_filter_combo.currentTextChanged.connect(self.on_classification_filter_changed)
-        data_header_layout.addWidget(self.classification_filter_combo)
+        filter_layout.addWidget(self.classification_filter_combo)
         
         # Clear filters button
-        clear_search_btn = QPushButton()
+        self.clear_search_btn = QPushButton()
+        clear_search_btn = self.clear_search_btn
         clear_search_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {colors.get('LIGHT_BG', '#F8F9FA')};
@@ -1507,9 +1633,24 @@ class TimelineWidget(QWidget):
                          self.translator.tr('btn_clear', default='Clear Filters'),
                          size=18)
         clear_search_btn.clicked.connect(self.clear_all_filters)
-        data_header_layout.addWidget(clear_search_btn)
+        filter_layout.addWidget(clear_search_btn)
+        filter_layout.addStretch()
         
-        data_header_layout.addStretch()
+        self.filters_heading = QLabel(
+            self.translator.tr('timeline_filters', default='Filters')
+        )
+        self.filters_heading.setObjectName('timelineFiltersHeading')
+        data_header_layout.addWidget(self.filters_heading)
+        filter_scroll = QScrollArea(data_header_frame)
+        filter_scroll.setObjectName('timelineFilterScroller')
+        filter_scroll.setWidgetResizable(False)
+        filter_scroll.setFrameShape(QFrame.NoFrame)
+        filter_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        filter_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        filter_scroll.setWidget(data_filter_content)
+        filter_scroll.setMinimumHeight(54)
+        filter_scroll.setMaximumHeight(72)
+        data_header_layout.addWidget(filter_scroll)
         
         # Load filter options after UI is set up
         QTimer.singleShot(100, self.load_filter_options)
@@ -1532,7 +1673,7 @@ class TimelineWidget(QWidget):
                         self.translator.tr('btn_print', default='Print'),
                         size=24, use_white_icon=True)
         self.print_btn.clicked.connect(self.print_timeline)
-        data_header_layout.addWidget(self.print_btn)
+        data_top_layout.addWidget(self.print_btn)
         
         # Export button (icon only)
         self.export_btn = QPushButton()
@@ -1553,12 +1694,14 @@ class TimelineWidget(QWidget):
                         self.translator.tr('btn_export', default='Export'),
                         size=24, use_white_icon=True)
         self.export_btn.clicked.connect(self.export_timeline)
-        data_header_layout.addWidget(self.export_btn)
+        data_top_layout.addWidget(self.export_btn)
         
         data_section_layout.addWidget(data_header_frame)
         
         # Timeline container with axis (8px grid spacing)
-        timeline_wrapper = QWidget()
+        self.timeline_wrapper = QWidget()
+        timeline_wrapper = self.timeline_wrapper
+        timeline_wrapper.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         timeline_wrapper_layout = QHBoxLayout(timeline_wrapper)
         timeline_wrapper_layout.setContentsMargins(0, 0, 0, 0)
         timeline_wrapper_layout.setSpacing(0)
@@ -1573,9 +1716,19 @@ class TimelineWidget(QWidget):
         # Use design system spacing
         timeline_margin = config['section_margin']
         timeline_spacing = config['card_spacing']
-        self.timeline_layout.setContentsMargins(timeline_margin, timeline_margin, 
+        self.timeline_layout.setContentsMargins(timeline_margin, timeline_margin,
                                                timeline_margin, timeline_margin)
         self.timeline_layout.setSpacing(timeline_spacing)
+        self.empty_state_label = QLabel(self.translator.tr(
+            'table_empty', default='No events match the current view.'
+        ))
+        self.empty_state_label.setObjectName('timelineEmptyState')
+        self.empty_state_label.setAlignment(Qt.AlignCenter)
+        self.empty_state_label.setWordWrap(True)
+        self.empty_state_label.setMinimumHeight(64)
+        self.empty_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
+        self.empty_state_label.setVisible(False)
+        self.timeline_layout.addWidget(self.empty_state_label)
         self.timeline_layout.addStretch()
         
         timeline_wrapper_layout.addWidget(self.timeline_container, 1)
@@ -1642,6 +1795,8 @@ class TimelineWidget(QWidget):
             background-color: {status_bg};
             border-radius: 6px;
         """)
+        self.status_label.setObjectName('timelineStatusMessage')
+        self.status_label.setVisible(False)
         data_section_layout.addWidget(self.status_label)
         
         # Add data section to splitter
@@ -1780,24 +1935,53 @@ class TimelineWidget(QWidget):
         self.apply_filters()
     
     def clear_all_filters(self):
-        """Clear all search and filter inputs"""
-        self.search_input.clear()
-        self.search_text = ""
-        self.filter_people = ""
-        self.filter_places = ""
-        self.filter_classification = ""
-        
-        # Clear combo boxes
-        if hasattr(self, 'people_filter_combo'):
-            self.people_filter_combo.setCurrentIndex(0)
-            self.people_filter_combo.lineEdit().clear()
-        if hasattr(self, 'places_filter_combo'):
-            self.places_filter_combo.setCurrentIndex(0)
-            self.places_filter_combo.lineEdit().clear()
-        if hasattr(self, 'classification_filter_combo'):
-            self.classification_filter_combo.setCurrentIndex(0)
-            self.classification_filter_combo.lineEdit().clear()
-        
+        """Clear all search, date, and categorical filter inputs."""
+        # Block intermediate signals so resetting several controls results in
+        # one deterministic refresh rather than a cascade of partial queries.
+        for control in (
+            getattr(self, 'search_input', None),
+            getattr(self, 'people_filter_combo', None),
+            getattr(self, 'places_filter_combo', None),
+            getattr(self, 'classification_filter_combo', None),
+            getattr(self, 'date_from', None),
+            getattr(self, 'date_to', None),
+        ):
+            if control is not None:
+                control.blockSignals(True)
+
+        try:
+            self.search_input.clear()
+            self.search_text = ""
+            self.filter_people = ""
+            self.filter_places = ""
+            self.filter_classification = ""
+
+            # Restore the same broad default date range used when the widget
+            # is created.  This makes both clear-filter controls consistent.
+            self.date_from.setDate(QDate.currentDate().addYears(-1))
+            self.date_to.setDate(QDate.currentDate())
+
+            for combo in (
+                getattr(self, 'people_filter_combo', None),
+                getattr(self, 'places_filter_combo', None),
+                getattr(self, 'classification_filter_combo', None),
+            ):
+                if combo is not None:
+                    combo.setCurrentIndex(0)
+                    if combo.isEditable() and combo.lineEdit():
+                        combo.lineEdit().clear()
+        finally:
+            for control in (
+                getattr(self, 'search_input', None),
+                getattr(self, 'people_filter_combo', None),
+                getattr(self, 'places_filter_combo', None),
+                getattr(self, 'classification_filter_combo', None),
+                getattr(self, 'date_from', None),
+                getattr(self, 'date_to', None),
+            ):
+                if control is not None:
+                    control.blockSignals(False)
+
         self.apply_filters()
     
     def load_filter_options(self):
@@ -1893,11 +2077,14 @@ class TimelineWidget(QWidget):
     def update_statistics(self):
         """Update statistics cards"""
         total = len(self.events)
-        filtered = len(self.filtered_events)
+        # Statistics describe the full filtered set, not only the visible
+        # pagination page.
+        statistics_events = self._full_filtered_events
+        filtered = len(statistics_events)
         
         # Count sources and analyses
-        sources_count = len(set(e.get('source_id') for e in self.filtered_events if e.get('source_id')))
-        analyses_count = len([e for e in self.filtered_events if e.get('analysis_id')])
+        sources_count = len(set(e.get('source_id') for e in statistics_events if e.get('source_id')))
+        analyses_count = len([e for e in statistics_events if e.get('analysis_id')])
         
         # Update using the new update_value method
         self.total_card.update_value(f"{total:,}")
@@ -1958,6 +2145,9 @@ class TimelineWidget(QWidget):
         if not hasattr(self, '_full_filtered_events') or not self._full_filtered_events:
             self.filtered_events = []
             self.refresh_display()
+            if hasattr(self, 'status_label'):
+                self.status_label.setText(self.translator.tr('msg_ready', default='Ready'))
+                self.status_label.setVisible(False)
             return
         
         if not self.pagination:
@@ -1970,23 +2160,10 @@ class TimelineWidget(QWidget):
         self.filtered_events = self._full_filtered_events[start:end]
         self.refresh_display()
         
-        # Update status
-        page_count = len(self.filtered_events)
-        total_filtered = len(self._full_filtered_events)
-        total_count = len(self.events)
-        
-        showing_text = self.translator.tr('pagination_showing', default='Showing')
-        of_text = self.translator.tr('pagination_of', default='of')
-        records_text = self.translator.tr('lbl_records', default='records')
-        
-        if total_filtered < total_count:
-            self.status_label.setText(
-                f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_filtered} ({total_count} {records_text})"
-            )
-        else:
-            self.status_label.setText(
-                f"{showing_text} {start + 1}-{start + page_count} {of_text} {total_count} {records_text}"
-            )
+        # Pagination owns the result range. Keep the legacy status channel
+        # available for future recoverable errors but quiet for normal pages.
+        self.status_label.setText(self.translator.tr('msg_ready', default='Ready'))
+        self.status_label.setVisible(False)
     
     def on_page_changed(self, page: int):
         """Handle page change"""
@@ -2026,15 +2203,24 @@ class TimelineWidget(QWidget):
         zoomed_spacing = int(config['card_spacing'] * self.zoom_factor)
         
         # Update timeline container spacing with zoom
-        self.timeline_layout.setContentsMargins(zoomed_margin, zoomed_margin, 
+        self.timeline_layout.setContentsMargins(zoomed_margin, zoomed_margin,
                                                zoomed_margin, zoomed_margin)
         self.timeline_layout.setSpacing(zoomed_spacing)
         
-        # Clear existing widgets
+        # Clear existing event cards while retaining the state label as the
+        # first item. Rebuild the spacer after the page cards so it does not
+        # push cards below an empty stretch on every refresh.
         while self.timeline_layout.count() > 1:
-            item = self.timeline_layout.takeAt(0)
+            item = self.timeline_layout.takeAt(1)
             if item.widget():
                 item.widget().deleteLater()
+
+        if hasattr(self, 'empty_state_label'):
+            self.empty_state_label.setVisible(not bool(self.filtered_events))
+            self.empty_state_label.setText(self.translator.tr(
+                'table_empty', default='No events match the current view.'
+            ))
+        self.timeline_layout.addStretch()
         
         # Create widgets only for current page (pagination prevents freezing)
         for event in self.filtered_events:
@@ -2044,9 +2230,29 @@ class TimelineWidget(QWidget):
             event_widget.clicked.connect(self.on_event_clicked)
             self.timeline_layout.insertWidget(self.timeline_layout.count() - 1, event_widget)
         
-        # Update axis after a short delay to allow layout to settle
+        # Reflow after the page cards exist. Without an explicit content-size
+        # pass, a resizable scroll area can squeeze every card into the
+        # viewport and make a populated timeline look like empty rules.
+        QTimer.singleShot(0, self._resize_timeline_content)
         QTimer.singleShot(100, self.update_axis_nodes)
     
+    def _resize_timeline_content(self):
+        """Give the internal scroll area enough height for the active page."""
+        if not hasattr(self, 'timeline_layout') or not hasattr(self, 'timeline_container'):
+            return
+        self.timeline_layout.activate()
+        desired_height = max(
+            self.timeline_layout.sizeHint().height(),
+            self.timeline_scroll.viewport().height() if hasattr(self, 'timeline_scroll') else 0,
+        )
+        self.timeline_container.setMinimumHeight(desired_height)
+        self.timeline_container.updateGeometry()
+        if hasattr(self, 'timeline_wrapper'):
+            self.timeline_wrapper.setMinimumHeight(desired_height)
+            self.timeline_wrapper.updateGeometry()
+            self.timeline_wrapper.adjustSize()
+        self.timeline_layout.activate()
+
     def update_axis_nodes(self):
         """Update visual axis nodes"""
         node_positions = []
@@ -2087,9 +2293,7 @@ class TimelineWidget(QWidget):
     
     
     def clear_filters(self):
-        """Clear date filters"""
-        self.date_from.setDate(QDate.currentDate().addYears(-1))
-        self.date_to.setDate(QDate.currentDate())
+        """Clear all timeline filters."""
         self.clear_all_filters()
     
     def on_density_changed(self, mode: str):
@@ -2153,7 +2357,7 @@ class TimelineWidget(QWidget):
         """Handle chart type change"""
         self.current_chart_type = self.chart_type_combo.currentData()
         if hasattr(self, 'chart_widget'):
-            self.chart_widget.update_chart(self.filtered_events, self.current_chart_type)
+            self.chart_widget.update_chart(self._full_filtered_events, self.current_chart_type)
     
     def set_scroll_enabled(self, enabled: bool):
         """Enable or disable internal scroll area (for unified scroll)"""
@@ -2190,7 +2394,7 @@ class TimelineWidget(QWidget):
             # Print dialog
             print_dialog = QPrintDialog(printer, self)
             if print_dialog.exec_() == QPrintDialog.Accepted:
-                from PyQt5.QtWidgets import QTextDocument
+                from PyQt5.QtGui import QTextDocument
                 doc = QTextDocument()
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, settings)
@@ -2261,7 +2465,7 @@ class TimelineWidget(QWidget):
                 # PDF export using print HTML
                 from utils.print_utils import generate_timeline_print_html, get_print_settings, print_document_with_page_numbers
                 from PyQt5.QtPrintSupport import QPrinter
-                from PyQt5.QtWidgets import QTextDocument
+                from PyQt5.QtGui import QTextDocument
                 
                 html = generate_timeline_print_html(
                     events_to_export,
@@ -2282,15 +2486,19 @@ class TimelineWidget(QWidget):
                 doc.setHtml(html)
                 print_document_with_page_numbers(doc, printer, settings)
             
-            # Open file if requested
-            if open_after and os.path.exists(file_path):
+            if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
+                raise IOError(f"Export did not create a valid output file: {file_path}")
+
+            # Opening the exported file is optional; a viewer failure must not
+            # be confused with an export failure.
+            if open_after:
                 try:
                     if sys.platform == 'win32':
                         os.startfile(file_path)
                     elif sys.platform == 'darwin':
-                        subprocess.call(['open', file_path])
+                        subprocess.run(['open', file_path], check=True)
                     else:
-                        subprocess.call(['xdg-open', file_path])
+                        subprocess.run(['xdg-open', file_path], check=True)
                 except Exception as e:
                     logger.warning(f"Could not open file: {e}")
             
@@ -2310,6 +2518,58 @@ class TimelineWidget(QWidget):
     
     def refresh_translations(self):
         """Refresh translations"""
+        if hasattr(self, 'controls_heading'):
+            self.controls_heading.setText(
+                self.translator.tr('timeline_controls_title', default='View controls')
+            )
+        if hasattr(self, 'order_group'):
+            self.order_group.setTitle(
+                self.translator.tr('timeline_order_group', default='Order')
+            )
+        if hasattr(self, 'density_group'):
+            self.density_group.setTitle(
+                self.translator.tr('timeline_density_group', default='Density')
+            )
+        if hasattr(self, 'date_group'):
+            self.date_group.setTitle(
+                self.translator.tr('timeline_date_group', default='Date range')
+            )
+        if hasattr(self, 'sort_label'):
+            self.sort_label.setText(self.translator.tr('timeline_sort'))
+        if hasattr(self, 'density_label'):
+            self.density_label.setText(self.translator.tr('timeline_density_mode'))
+        if hasattr(self, 'from_label'):
+            self.from_label.setText(self.translator.tr('timeline_from'))
+        if hasattr(self, 'to_label'):
+            self.to_label.setText(self.translator.tr('timeline_to'))
+        if hasattr(self, 'chart_type_label'):
+            self.chart_type_label.setText(self.translator.tr('timeline_chart_select'))
+        if hasattr(self, 'data_title'):
+            self.data_title.setText(self.translator.tr('timeline_data_section'))
+        if hasattr(self, 'search_label'):
+            self.search_label.setText(self.translator.tr('search'))
+        if hasattr(self, 'people_label'):
+            self.people_label.setText(self.translator.tr('lbl_people', default='People:'))
+        if hasattr(self, 'places_label'):
+            self.places_label.setText(self.translator.tr('lbl_places', default='Places:'))
+        if hasattr(self, 'classification_label'):
+            self.classification_label.setText(
+                self.translator.tr('lbl_classification', default='Classification:')
+            )
+        if hasattr(self, 'filters_heading'):
+            self.filters_heading.setText(
+                self.translator.tr('timeline_filters', default='Filters')
+            )
+        for button_attr, translation_key, fallback in (
+            ('clear_search_btn', 'btn_clear', 'Clear filters'),
+            ('print_btn', 'btn_print', 'Print'),
+            ('export_btn', 'btn_export', 'Export'),
+        ):
+            button = getattr(self, button_attr, None)
+            if button:
+                label = self.translator.tr(translation_key, default=fallback)
+                button.setToolTip(label)
+                button.setAccessibleName(label)
         if hasattr(self, 'sort_by_combo'):
             self.sort_by_combo.clear()
             self.sort_by_combo.addItem(self.translator.tr('timeline_sort_by_date', default='Date'), 'date')
@@ -2356,7 +2616,7 @@ class TimelineWidget(QWidget):
         
         # Refresh chart widget by updating current chart
         if hasattr(self, 'chart_widget') and hasattr(self, 'current_chart_type'):
-            self.chart_widget.update_chart(self.filtered_events, self.current_chart_type)
+            self.chart_widget.update_chart(self._full_filtered_events, self.current_chart_type)
         
         # Refresh analysis panel
         if hasattr(self, 'analysis_panel'):

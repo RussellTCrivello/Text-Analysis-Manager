@@ -89,7 +89,7 @@ class AccessibilityManager(QObject):
         
         # Load accessibility settings
         self.keyboard_hints_enabled = self.config.get('Accessibility', 'keyboard_navigation', True)
-        self.screen_reader_enabled = self.config.get('Accessibility', 'screen_reader_support', False)
+        self.screen_reader_enabled = self.config.get('Accessibility', 'screen_reader_support', True)
         self.high_contrast_enabled = self.config.get('Accessibility', 'high_contrast', False)
         self.focus_indicator_enabled = self.config.get('Accessibility', 'focus_indicator', True)
     
@@ -365,7 +365,7 @@ class AccessibilityManager(QObject):
     def update_settings(self):
         """Reload settings from config"""
         self.keyboard_hints_enabled = self.config.get('Accessibility', 'keyboard_navigation', True)
-        self.screen_reader_enabled = self.config.get('Accessibility', 'screen_reader_support', False)
+        self.screen_reader_enabled = self.config.get('Accessibility', 'screen_reader_support', True)
         self.high_contrast_enabled = self.config.get('Accessibility', 'high_contrast', False)
         self.focus_indicator_enabled = self.config.get('Accessibility', 'focus_indicator', True)
 

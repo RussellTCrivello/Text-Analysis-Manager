@@ -19,10 +19,11 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QFont, QColor, QIcon
 
-from icons.icon_manager import setup_icon_button
+from icons.icon_manager import setup_icon_button, get_icon
 from translations.translations import TranslationManager
 from utils.logger import get_logger
 from utils.print_utils import ExportSettings
+from utils.table_ui import configure_table, set_item_with_tooltip
 from styles.styles import AppStyles
 
 logger = get_logger(__name__)
@@ -129,7 +130,12 @@ class ExportPreviewDialog(QDialog):
         stats_layout = QHBoxLayout(stats_frame)
         
         # Total records
-        total_label = QLabel(f"📊 {self.translator.tr('export_total_records')}: ")
+        total_icon = QLabel()
+        total_icon.setPixmap(get_icon('statistics', 18).pixmap(18, 18))
+        total_icon.setToolTip(self.translator.tr('export_total_records'))
+        total_icon.setAccessibleName(self.translator.tr('export_total_records'))
+        stats_layout.addWidget(total_icon)
+        total_label = QLabel(f"{self.translator.tr('export_total_records')}: ")
         total_label.setStyleSheet(AppStyles.get_component_style('export_stats_label'))
         self.total_count = QLabel(str(len(self.data)))
         self.total_count.setStyleSheet(AppStyles.get_component_style('export_stats_count'))
@@ -139,7 +145,12 @@ class ExportPreviewDialog(QDialog):
         stats_layout.addSpacing(30)
         
         # Columns count
-        cols_label = QLabel(f"📋 {self.translator.tr('export_columns')}: ")
+        cols_icon = QLabel()
+        cols_icon.setPixmap(get_icon('table', 18).pixmap(18, 18))
+        cols_icon.setToolTip(self.translator.tr('export_columns'))
+        cols_icon.setAccessibleName(self.translator.tr('export_columns'))
+        stats_layout.addWidget(cols_icon)
+        cols_label = QLabel(f"{self.translator.tr('export_columns')}: ")
         cols_label.setStyleSheet(AppStyles.get_component_style('export_stats_label'))
         self.cols_count = QLabel(str(len(self.all_keys)))
         self.cols_count.setStyleSheet(AppStyles.get_component_style('export_stats_count_green'))
@@ -153,22 +164,50 @@ class ExportPreviewDialog(QDialog):
         self.preview_spin = QSpinBox()
         self.preview_spin.setRange(5, 100)
         self.preview_spin.setValue(20)
+        self.preview_spin.setAccessibleName(self.translator.tr('export_preview_rows'))
+        self.preview_spin.setToolTip(self.translator.tr('export_preview_rows'))
         self.preview_spin.valueChanged.connect(self.update_preview)
         stats_layout.addWidget(preview_label)
         stats_layout.addWidget(self.preview_spin)
+        self.preview_range_label = QLabel()
+        self.preview_range_label.setObjectName('exportPreviewRange')
+        self.preview_range_label.setAccessibleName(self.translator.tr(
+            'pagination_showing', default='Showing'
+        ))
+        stats_layout.addWidget(self.preview_range_label)
         
         top_layout.addWidget(stats_frame)
         
         # Preview table
-        preview_label = QLabel(f"👁️ {self.translator.tr('export_data_preview')}")
+        preview_header = QHBoxLayout()
+        preview_icon = QLabel()
+        preview_icon.setPixmap(get_icon('preview', 18).pixmap(18, 18))
+        preview_icon.setToolTip(self.translator.tr('export_data_preview'))
+        preview_icon.setAccessibleName(self.translator.tr('export_data_preview'))
+        preview_header.addWidget(preview_icon)
+        preview_label = QLabel(self.translator.tr('export_data_preview'))
         preview_label.setStyleSheet(AppStyles.get_component_style('export_stats_label'))
-        top_layout.addWidget(preview_label)
+        preview_header.addWidget(preview_label)
+        preview_header.addStretch()
+        top_layout.addLayout(preview_header)
+        self.preview_state_label = QLabel(self.translator.tr(
+            'table_empty', default='No records are available for preview.'
+        ))
+        self.preview_state_label.setObjectName('tableStateLabel')
+        self.preview_state_label.setAlignment(Qt.AlignCenter)
+        self.preview_state_label.setWordWrap(True)
+        self.preview_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
+        self.preview_state_label.setVisible(not bool(self.data))
+        top_layout.addWidget(self.preview_state_label)
         
         self.preview_table = QTableWidget()
-        self.preview_table.setAlternatingRowColors(True)
+        self.preview_table.setObjectName('exportPreviewTable')
+        configure_table(self.preview_table, multi_select=True)
+        self.preview_table.setAccessibleName(self.translator.tr(
+            'export_data_preview', default='Export data preview'
+        ))
         self.preview_table.setStyleSheet(AppStyles.get_component_style('export_preview_table'))
         self.preview_table.horizontalHeader().setStretchLastSection(True)
-        self.preview_table.setEditTriggers(QTableWidget.NoEditTriggers)
         top_layout.addWidget(self.preview_table)
         
         splitter.addWidget(top_widget)
@@ -230,18 +269,20 @@ class ExportPreviewDialog(QDialog):
         format_grid = QGridLayout()
         
         formats = [
-            (self.FORMAT_EXCEL, '📗 Excel (.xlsx)', 'export_excel_desc'),
-            (self.FORMAT_CSV, '📄 CSV (.csv)', 'export_csv_desc'),
-            (self.FORMAT_WORD, '📘 Word (.docx)', 'export_word_desc'),
-            (self.FORMAT_PDF, '📕 PDF (.pdf)', 'export_pdf_desc'),
-            (self.FORMAT_JSON, '📋 JSON (.json)', 'export_json_desc'),
-            (self.FORMAT_XML, '📄 XML (.xml)', 'export_xml_desc'),
-            (self.FORMAT_JSON_LINES, '📝 JSON Lines (.jsonl)', 'export_jsonl_desc'),
+            (self.FORMAT_EXCEL, 'Excel (.xlsx)', 'export_excel_desc', 'export_excel'),
+            (self.FORMAT_CSV, 'CSV (.csv)', 'export_csv_desc', 'export_csv'),
+            (self.FORMAT_WORD, 'Word (.docx)', 'export_word_desc', 'export_word'),
+            (self.FORMAT_PDF, 'PDF (.pdf)', 'export_pdf_desc', 'export_pdf'),
+            (self.FORMAT_JSON, 'JSON (.json)', 'export_json_desc', 'file_code'),
+            (self.FORMAT_XML, 'XML (.xml)', 'export_xml_desc', 'file_code'),
+            (self.FORMAT_JSON_LINES, 'JSON Lines (.jsonl)', 'export_jsonl_desc', 'file_text'),
         ]
         
         self.format_radios = {}
-        for i, (fmt, label, desc_key) in enumerate(formats):
+        for i, (fmt, label, desc_key, icon_name) in enumerate(formats):
             radio = QRadioButton(label)
+            radio.setIcon(get_icon(icon_name, 18))
+            radio.setIconSize(QSize(18, 18))
             radio.setProperty('format', fmt)
             if fmt == self.default_format:
                 radio.setChecked(True)
@@ -548,9 +589,11 @@ class ExportPreviewDialog(QDialog):
         self.update_preview()
     
     def on_width_changed(self):
-        """Handle width ratio change"""
-        # Update total width display if needed
-        pass
+        """Handle width ratio changes and keep the preview synchronized."""
+        # Widths are consumed by the selected exporter. Refreshing the preview
+        # here also keeps column headers/data aligned when the selection changes
+        # in the same interaction sequence.
+        self.update_preview()
     
     def update_selected_count(self):
         """Update selected columns count label"""
@@ -625,11 +668,30 @@ class ExportPreviewDialog(QDialog):
         if not selected_columns:
             self.preview_table.clear()
             self.preview_table.setRowCount(0)
+            if hasattr(self, 'preview_state_label'):
+                self.preview_state_label.setText(self.translator.tr(
+                    'table_empty', default='Select at least one column to preview records.'
+                ))
+                self.preview_state_label.setVisible(True)
             self.preview_table.setColumnCount(0)
+            if hasattr(self, 'preview_range_label'):
+                self.preview_range_label.setText(
+                    f"{self.translator.tr('pagination_showing', default='Showing')} 0–0 "
+                    f"{self.translator.tr('pagination_of', default='of')} {len(self.data)}"
+                )
             return
         
         preview_count = min(self.preview_spin.value(), len(self.data))
         preview_data = self.data[:preview_count]
+        if hasattr(self, 'preview_state_label'):
+            self.preview_state_label.setVisible(not bool(preview_data))
+        if hasattr(self, 'preview_range_label'):
+            self.preview_range_label.setText(
+                f"{self.translator.tr('pagination_showing', default='Showing')} "
+                f"{1 if preview_count else 0}–{preview_count} "
+                f"{self.translator.tr('pagination_of', default='of')} {len(self.data)} "
+                f"({self.translator.tr('export_data_preview', default='preview').lower()})"
+            )
         
         # Setup table
         self.preview_table.setColumnCount(len(selected_columns))
@@ -650,12 +712,13 @@ class ExportPreviewDialog(QDialog):
                 else:
                     value = str(value)
                 
-                # Truncate long values for preview
+                full_value = value
+                # Truncate long values for a dense preview; the tooltip keeps
+                # the complete source value available.
                 if len(value) > 50:
-                    value = value[:47] + '...'
-                
-                item = QTableWidgetItem(value)
-                self.preview_table.setItem(row_idx, col_idx, item)
+                    value = value[:47] + '…'
+                item = set_item_with_tooltip(self.preview_table, row_idx, col_idx, value)
+                item.setToolTip(full_value)
         
         # Resize columns
         self.preview_table.resizeColumnsToContents()

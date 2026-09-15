@@ -4,7 +4,7 @@ Provides visual query builder for advanced search operations
 With saved searches and search history support
 """
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QApplication,
     QMessageBox, QGroupBox, QComboBox, QLineEdit, QDateEdit,
     QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox,
     QFormLayout, QTextEdit, QScrollArea, QWidget, QInputDialog,
@@ -18,7 +18,9 @@ from translations.translations import TranslationManager
 from styles.styles import AppStyles
 from utils.logger import get_logger
 from utils.search_history import get_search_history_manager
+from utils.table_ui import configure_table, set_item_with_tooltip
 from db.db_manager import DatabaseManager
+from icons.icon_manager import setup_icon_button, get_icon
 
 logger = get_logger(__name__)
 
@@ -38,7 +40,6 @@ class AdvancedSearchDialog(QDialog):
         
         self.setWindowTitle(translator.tr('advanced_search') if hasattr(translator, 'tr') else 'Advanced Search')
         # Apply fixed size to prevent resizing on button clicks or content changes
-        from styles.styles import AppStyles
         AppStyles.apply_fixed_size(self, 1000, 800)
         self._apply_rtl_direction()
         self.setup_ui()
@@ -104,7 +105,6 @@ class AdvancedSearchDialog(QDialog):
         # Buttons - properly aligned in a single row
         btn_layout = QHBoxLayout()
         btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
-        from styles.styles import AppStyles
         btn_layout.setSpacing(AppStyles.get_spacing(2))  # 16px - 8px grid spacing
         
         self.btn_search = QPushButton(self.translator.tr('btn_search') if hasattr(self.translator, 'tr') else 'Search')
@@ -146,13 +146,31 @@ class AdvancedSearchDialog(QDialog):
         results_group = QGroupBox(self.translator.tr('search_results') if hasattr(self.translator, 'tr') else 'Results')
         results_layout = QVBoxLayout(results_group)
         
-        self.results_count_label = QLabel("0 results")
+        self.results_count_label = QLabel(self.translator.tr('search_results_count', count=0))
         results_layout.addWidget(self.results_count_label)
+        self.results_state_label = QLabel()
+        self.results_state_label.setObjectName('tableStateLabel')
+        self.results_state_label.setAlignment(Qt.AlignCenter)
+        self.results_state_label.setWordWrap(True)
+        self.results_state_label.setStyleSheet(AppStyles.get_component_style('table_state'))
+        self.results_state_label.setVisible(False)
+        results_layout.addWidget(self.results_state_label)
         
         self.results_table = QTableWidget()
-        self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.results_table.setObjectName('advancedSearchResultsTable')
+        configure_table(self.results_table, multi_select=True)
         self.results_table.horizontalHeader().setStretchLastSection(True)
+        self.results_table.setAccessibleName(self.translator.tr(
+            'search_results', default='Search results'
+        ))
+        self.results_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.results_table.customContextMenuRequested.connect(self._show_results_context_menu)
         results_layout.addWidget(self.results_table)
+        from widgets.pagination_widget import PaginationWidget
+        self.results_pagination = PaginationWidget(self.translator, self)
+        self.results_pagination.page_changed.connect(self._render_results_page)
+        self.results_pagination.page_size_changed.connect(self._render_results_page)
+        results_layout.addWidget(self.results_pagination)
         
         search_layout.addWidget(results_group)
         
@@ -173,18 +191,21 @@ class AdvancedSearchDialog(QDialog):
         self.saved_searches_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.saved_searches_list.customContextMenuRequested.connect(self.show_saved_search_context_menu)
         self.saved_searches_list.itemDoubleClicked.connect(self.load_saved_search)
+        self.saved_searches_list.itemSelectionChanged.connect(self._update_saved_search_actions)
         saved_layout.addWidget(self.saved_searches_list)
         
         saved_btn_layout = QHBoxLayout()
         saved_btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
         saved_btn_layout.setSpacing(AppStyles.get_spacing(2))  # 16px - 8px grid spacing
-        btn_load_saved = QPushButton(self.translator.tr('search_load') if hasattr(self.translator, 'tr') else 'Load')
-        btn_load_saved.clicked.connect(self.load_selected_saved_search)
-        saved_btn_layout.addWidget(btn_load_saved, alignment=Qt.AlignVCenter)
-        
-        btn_delete_saved = QPushButton(self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Delete')
-        btn_delete_saved.clicked.connect(self.delete_selected_saved_search)
-        saved_btn_layout.addWidget(btn_delete_saved, alignment=Qt.AlignVCenter)
+        self.btn_load_saved = QPushButton(self.translator.tr('search_load') if hasattr(self.translator, 'tr') else 'Load')
+        self.btn_load_saved.clicked.connect(self.load_selected_saved_search)
+        self.btn_load_saved.setEnabled(False)
+        saved_btn_layout.addWidget(self.btn_load_saved, alignment=Qt.AlignVCenter)
+
+        self.btn_delete_saved = QPushButton(self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Delete')
+        self.btn_delete_saved.clicked.connect(self.delete_selected_saved_search)
+        self.btn_delete_saved.setEnabled(False)
+        saved_btn_layout.addWidget(self.btn_delete_saved, alignment=Qt.AlignVCenter)
         saved_layout.addLayout(saved_btn_layout)
         
         self.side_tabs.addTab(saved_tab, self.translator.tr('search_saved') if hasattr(self.translator, 'tr') else 'Saved Searches')
@@ -197,18 +218,21 @@ class AdvancedSearchDialog(QDialog):
         self.history_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.history_list.customContextMenuRequested.connect(self.show_history_context_menu)
         self.history_list.itemDoubleClicked.connect(self.load_history_item)
+        self.history_list.itemSelectionChanged.connect(self._update_history_actions)
         history_layout.addWidget(self.history_list)
         
         history_btn_layout = QHBoxLayout()
         history_btn_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
         history_btn_layout.setSpacing(AppStyles.get_spacing(2))  # 16px - 8px grid spacing
-        btn_load_history = QPushButton(self.translator.tr('search_load') if hasattr(self.translator, 'tr') else 'Load')
-        btn_load_history.clicked.connect(self.load_selected_history_item)
-        history_btn_layout.addWidget(btn_load_history, alignment=Qt.AlignVCenter)
-        
-        btn_clear_history = QPushButton(self.translator.tr('btn_clear') if hasattr(self.translator, 'tr') else 'Clear History')
-        btn_clear_history.clicked.connect(self.clear_search_history)
-        history_btn_layout.addWidget(btn_clear_history, alignment=Qt.AlignVCenter)
+        self.btn_load_history = QPushButton(self.translator.tr('search_load') if hasattr(self.translator, 'tr') else 'Load')
+        self.btn_load_history.clicked.connect(self.load_selected_history_item)
+        self.btn_load_history.setEnabled(False)
+        history_btn_layout.addWidget(self.btn_load_history, alignment=Qt.AlignVCenter)
+
+        self.btn_clear_history = QPushButton(self.translator.tr('btn_clear') if hasattr(self.translator, 'tr') else 'Clear History')
+        self.btn_clear_history.clicked.connect(self.clear_search_history)
+        self.btn_clear_history.setEnabled(False)
+        history_btn_layout.addWidget(self.btn_clear_history, alignment=Qt.AlignVCenter)
         history_layout.addLayout(history_btn_layout)
         
         self.side_tabs.addTab(history_tab, self.translator.tr('search_history') if hasattr(self.translator, 'tr') else 'History')
@@ -247,11 +271,20 @@ class AdvancedSearchDialog(QDialog):
         field_combo.setObjectName("field_combo")
         # Get available fields based on table
         if self.table_name == 'sources':
-            fields = ['name', 'type', 'country', 'city', 'description', 'note', 'ownership']
+            fields = [
+                'name', 'type', 'country', 'city', 'description', 'note',
+                'ownership', 'date_entry', 'date_creation', 'date_modified'
+            ]
         elif self.table_name == 'contents':
-            fields = ['title', 'content_data', 'note']
+            fields = [
+                'title', 'content_data', 'note', 'date_content',
+                'date_creation', 'date_modified'
+            ]
         elif self.table_name == 'content_analysis':
-            fields = ['classification', 'list_names_people', 'list_names_places', 'list_sides']
+            fields = [
+                'classification', 'list_names_people', 'list_names_places',
+                'list_sides', 'date_analysis', 'date_creation', 'date_modified'
+            ]
         else:
             fields = []
         
@@ -267,7 +300,9 @@ class AdvancedSearchDialog(QDialog):
         # Value input
         value_edit = QLineEdit()
         value_edit.setObjectName("value_edit")
-        value_edit.setPlaceholderText("Value")
+        value_edit.setPlaceholderText(
+            self.translator.tr('search_value') if hasattr(self.translator, 'tr') else 'Value'
+        )
         condition_layout.addWidget(value_edit)
         
         # Date picker (if field is date)
@@ -278,8 +313,14 @@ class AdvancedSearchDialog(QDialog):
         condition_layout.addWidget(date_edit)
         
         # Remove button
-        btn_remove = QPushButton("×")
-        btn_remove.setMaximumWidth(30)
+        btn_remove = QPushButton()
+        setup_icon_button(
+            btn_remove,
+            'btn_close',
+            self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Remove condition',
+            size=18
+        )
+        btn_remove.setAccessibleName(self.translator.tr('btn_delete') if hasattr(self.translator, 'tr') else 'Remove condition')
         btn_remove.clicked.connect(lambda: self.remove_condition(condition_widget))
         condition_layout.addWidget(btn_remove)
         
@@ -316,9 +357,22 @@ class AdvancedSearchDialog(QDialog):
         self.add_condition()
     
     def get_current_conditions(self) -> Dict:
-        """Get current conditions from UI"""
+        """Get current conditions from UI.
+
+        Dictionary keys remain backwards-compatible for saved searches. When
+        the same field is used more than once, an internal suffix preserves
+        both conditions instead of silently overwriting the first one.
+        """
         conditions = {}
         logic = self.logic_combo.currentText()
+
+        def add_condition(field: str, condition: Dict):
+            key = field
+            suffix = 2
+            while key in conditions:
+                key = f"{field}__condition_{suffix}"
+                suffix += 1
+            conditions[key] = condition
         
         for i in range(self.conditions_layout.count()):
             item = self.conditions_layout.itemAt(i)
@@ -332,28 +386,21 @@ class AdvancedSearchDialog(QDialog):
                 if field_combo and operator_combo:
                     field = field_combo.currentText()
                     operator = operator_combo.currentText()
+                    if not field:
+                        continue
                     
                     # Handle NULL operators
                     if 'NULL' in operator:
-                        conditions[field] = {
-                            'operator': operator,
-                            'value': None
-                        }
+                        add_condition(field, {'operator': operator, 'value': None})
                     elif date_edit and date_edit.isVisible():
                         value = date_edit.date().toString('yyyy-MM-dd')
-                        conditions[field] = {
-                            'operator': operator,
-                            'value': value
-                        }
+                        add_condition(field, {'operator': operator, 'value': value})
                     elif value_edit and value_edit.text():
                         value = value_edit.text()
                         # Add wildcards for LIKE operator if not present
                         if operator in ['LIKE', 'NOT LIKE'] and '%' not in value:
                             value = f'%{value}%'
-                        conditions[field] = {
-                            'operator': operator,
-                            'value': value
-                        }
+                        add_condition(field, {'operator': operator, 'value': value})
         
         conditions['logic'] = logic
         return conditions
@@ -371,6 +418,10 @@ class AdvancedSearchDialog(QDialog):
         for field, cond in conditions.items():
             if field == 'logic':
                 continue
+
+            # Restore the UI field for repeated-condition keys generated by
+            # get_current_conditions().
+            display_field = str(field).split('__condition_', 1)[0]
             
             if not first:
                 self.add_condition()
@@ -388,7 +439,7 @@ class AdvancedSearchDialog(QDialog):
                     date_edit = widget.findChild(QDateEdit, "date_edit")
                     
                     if field_combo:
-                        idx = field_combo.findText(field)
+                        idx = field_combo.findText(display_field)
                         if idx >= 0:
                             field_combo.setCurrentIndex(idx)
                     
@@ -400,7 +451,7 @@ class AdvancedSearchDialog(QDialog):
                         
                         value = cond.get('value')
                         if value is not None:
-                            if 'date' in field.lower() and date_edit:
+                            if 'date' in display_field.lower() and date_edit:
                                 date_edit.setDate(QDate.fromString(str(value), 'yyyy-MM-dd'))
                             elif value_edit:
                                 # Remove LIKE wildcards for display
@@ -414,8 +465,11 @@ class AdvancedSearchDialog(QDialog):
         # Check if we have any conditions
         has_conditions = any(k != 'logic' for k in conditions.keys())
         if not has_conditions:
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "Please add at least one search condition")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('search_add_condition_required')
+            )
             return
         
         # Execute search
@@ -450,40 +504,87 @@ class AdvancedSearchDialog(QDialog):
             if field == 'logic':
                 continue
             if isinstance(cond, dict):
+                display_field = str(field).split('__condition_', 1)[0]
                 operator = cond.get('operator', '=')
                 value = cond.get('value', '')
                 if value:
-                    parts.append(f"{field} {operator} '{value}'")
+                    parts.append(f"{display_field} {operator} '{value}'")
                 else:
-                    parts.append(f"{field} {operator}")
+                    parts.append(f"{display_field} {operator}")
         
         return f" {logic} ".join(parts) if parts else (self.translator.tr('search_empty') if self.translator and hasattr(self.translator, 'tr') else "Empty search")
     
     def display_results(self):
-        """Display search results"""
+        """Display the complete search result set through a paged preview."""
         if not self.results:
             self.results_table.setRowCount(0)
-            self.results_count_label.setText("0 results")
+            self.results_table.setColumnCount(0)
+            self.results_pagination.current_page = 1
+            self.results_pagination.set_total_items(0)
+            self.results_count_label.setText(self.translator.tr('search_results_count', count=0))
+            self.results_state_label.setText(self.translator.tr(
+                'table_empty', default='No records match the current search.'
+            ))
+            self.results_state_label.setVisible(True)
             return
-        
-        # Get column names from first result
-        if self.results:
-            columns = list(self.results[0].keys())
-            self.results_table.setColumnCount(len(columns))
-            self.results_table.setHorizontalHeaderLabels(columns)
-            self.results_table.setRowCount(len(self.results))
-            
-            for row_idx, row_data in enumerate(self.results):
-                for col_idx, col_key in enumerate(columns):
-                    value = row_data.get(col_key, '')
-                    item = QTableWidgetItem(str(value)[:200])  # Truncate long values
-                    self.results_table.setItem(row_idx, col_idx, item)
-            
-            self.results_table.resizeColumnsToContents()
-            self.results_count_label.setText(f"{len(self.results)} results")
-    
+
+        self.result_columns = list(self.results[0].keys())
+        self.results_state_label.setVisible(False)
+        self.results_table.setColumnCount(len(self.result_columns))
+        self.results_table.setHorizontalHeaderLabels(self.result_columns)
+        self.results_pagination.current_page = 1
+        self.results_pagination.set_total_items(len(self.results))
+        self._render_results_page()
+        self.results_count_label.setText(
+            self.translator.tr('search_results_count', count=len(self.results))
+        )
+
+    def _render_results_page(self, _page=None):
+        """Render the current page while keeping the accepted result set intact."""
+        if not self.results:
+            return
+        columns = getattr(self, 'result_columns', list(self.results[0].keys()))
+        start, end = self.results_pagination.get_page_range()
+        page_data = self.results[start:end]
+        self.results_table.setRowCount(len(page_data))
+        for row_idx, row_data in enumerate(page_data):
+            for col_idx, col_key in enumerate(columns):
+                full_value = '' if row_data.get(col_key) is None else str(row_data.get(col_key))
+                display_value = full_value[:200]
+                set_item_with_tooltip(
+                    self.results_table, row_idx, col_idx, display_value
+                ).setToolTip(full_value)
+        self.results_table.resizeColumnsToContents()
+
+    def _show_results_context_menu(self, position):
+        """Keep copy available without adding another permanent action row."""
+        item = self.results_table.itemAt(position)
+        if item is not None:
+            self.results_table.setCurrentItem(item)
+        menu = QMenu(self.results_table)
+        menu.setObjectName('tableContextMenu')
+        copy_action = QAction(
+            self.translator.tr('btn_copy', default='Copy value'), menu
+        )
+        copy_action.setIcon(get_icon('btn_copy', 18))
+        copy_action.setEnabled(bool(self.results_table.currentItem()))
+        copy_action.triggered.connect(lambda: QApplication.clipboard().setText(
+            self.results_table.currentItem().text() if self.results_table.currentItem() else ''
+        ))
+        menu.addAction(copy_action)
+        menu.exec_(self.results_table.viewport().mapToGlobal(position))
+
     # ==================== Saved Searches ====================
-    
+
+    def _update_saved_search_actions(self):
+        has_item = self.saved_searches_list.currentItem() is not None
+        self.btn_load_saved.setEnabled(has_item)
+        self.btn_delete_saved.setEnabled(has_item)
+
+    def _update_history_actions(self):
+        self.btn_load_history.setEnabled(self.history_list.currentItem() is not None)
+        self.btn_clear_history.setEnabled(self.history_list.count() > 0)
+
     def load_saved_searches(self):
         """Load saved searches into the list"""
         self.saved_searches_list.clear()
@@ -497,6 +598,7 @@ class AdvancedSearchDialog(QDialog):
         
         # Load frequently used
         self.load_frequently_used()
+        self._update_saved_search_actions()
     
     def load_frequently_used(self):
         """Load frequently used searches"""
@@ -515,8 +617,11 @@ class AdvancedSearchDialog(QDialog):
         
         has_conditions = any(k != 'logic' for k in conditions.keys())
         if not has_conditions:
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "Please add at least one search condition to save")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('search_save_condition_required')
+            )
             return
         
         name, ok = QInputDialog.getText(
@@ -557,8 +662,11 @@ class AdvancedSearchDialog(QDialog):
         """Update an existing saved search"""
         current_item = self.saved_searches_list.currentItem()
         if not current_item:
-            QMessageBox.warning(self, self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
-                             "Please select a saved search to update")
+            QMessageBox.warning(
+                self,
+                self.translator.tr('msg_warning') if hasattr(self.translator, 'tr') else 'Warning',
+                self.translator.tr('search_select_saved_update')
+            )
             return
         
         search_id = current_item.data(Qt.UserRole)
@@ -577,7 +685,7 @@ class AdvancedSearchDialog(QDialog):
                 QMessageBox.information(
                     self,
                     self.translator.tr('msg_success') if hasattr(self.translator, 'tr') else 'Success',
-                    'Search updated successfully'
+                    self.translator.tr('search_updated_successfully')
                 )
                 self.load_saved_searches()
     
@@ -635,6 +743,7 @@ class AdvancedSearchDialog(QDialog):
         item = self.saved_searches_list.itemAt(position)
         if not item:
             return
+        self.saved_searches_list.setCurrentItem(item)
         
         menu = QMenu(self)
         
@@ -666,6 +775,7 @@ class AdvancedSearchDialog(QDialog):
             item = QListWidgetItem(display_text)
             item.setData(Qt.UserRole, entry)
             self.history_list.addItem(item)
+        self._update_history_actions()
     
     def load_selected_history_item(self):
         """Load the selected history item"""
@@ -700,6 +810,7 @@ class AdvancedSearchDialog(QDialog):
         item = self.history_list.itemAt(position)
         if not item:
             return
+        self.history_list.setCurrentItem(item)
         
         menu = QMenu(self)
         
