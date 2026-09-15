@@ -85,6 +85,7 @@ class ToolbarFactory:
             QWidget containing the complete toolbar
         """
         toolbar_widget = QWidget(parent)
+        toolbar_widget.setObjectName('workspaceToolbar')
         
         # Apply RTL/LTR direction based on current language
         is_rtl = self.translator.current_language == 'ar'
@@ -111,6 +112,7 @@ class ToolbarFactory:
                           callbacks: Dict[str, Callable]) -> QWidget:
         """Create the search and date filter row"""
         row = QWidget(parent)
+        row.setObjectName('workspaceFilterRow')
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(AppStyles.get_spacing(2))  # 16px - 8px grid (rounding 12px to 16px)
@@ -127,8 +129,22 @@ class ToolbarFactory:
             layout.addWidget(date_widget)
         
         layout.addStretch()
-        
-        return row
+
+        # The filter row contains date controls with deliberate minimum widths.
+        # Keep it usable on compact windows by allowing horizontal scrolling
+        # instead of clipping labels or calendar fields.
+        from PyQt5.QtWidgets import QScrollArea
+        filter_scroll = QScrollArea(parent)
+        filter_scroll.setObjectName('workspaceFilterScroller')
+        filter_scroll.setWidgetResizable(False)
+        filter_scroll.setFrameShape(QFrame.NoFrame)
+        filter_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        filter_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        filter_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        filter_scroll.setMinimumHeight(66)
+        filter_scroll.setMaximumHeight(82)
+        filter_scroll.setWidget(row)
+        return filter_scroll
     
     def _create_search_section(self, parent: QWidget, 
                                callbacks: Dict[str, Callable]) -> QWidget:
@@ -225,6 +241,7 @@ class ToolbarFactory:
         
         # Create scroll area for horizontal scrolling on smaller screens
         scroll_area = QScrollArea(parent)
+        scroll_area.setObjectName('workspaceActionScroller')
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -286,8 +303,8 @@ class ToolbarFactory:
         # Add button
         if config.show_add:
             btn_add = QPushButton()
-            setup_icon_button(btn_add, 'btn_add', self.translator.tr('btn_add'))
             btn_add.setStyleSheet(AppStyles.get_button_style('success'))
+            setup_icon_button(btn_add, 'btn_add', self.translator.tr('btn_add'))
             if 'add' in callbacks:
                 btn_add.clicked.connect(callbacks['add'])
             layout.addWidget(btn_add)
@@ -305,9 +322,9 @@ class ToolbarFactory:
         # Delete button
         if config.show_delete:
             btn_delete = QPushButton()
-            setup_icon_button(btn_delete, 'btn_delete', self.translator.tr('btn_delete'))
             btn_delete.setProperty('class', 'danger')
             btn_delete.setStyleSheet(AppStyles.get_button_style('danger'))
+            setup_icon_button(btn_delete, 'btn_delete', self.translator.tr('btn_delete'))
             if 'delete' in callbacks:
                 btn_delete.clicked.connect(callbacks['delete'])
             layout.addWidget(btn_delete)
@@ -373,8 +390,8 @@ class ToolbarFactory:
         # Unified export button (with preview dialog)
         if config.show_export_unified:
             btn_export = QPushButton()
-            setup_icon_button(btn_export, 'btn_export', self.translator.tr('btn_export'))
             btn_export.setStyleSheet(AppStyles.get_button_style('purple'))
+            setup_icon_button(btn_export, 'btn_export', self.translator.tr('btn_export'))
             if 'export_unified' in callbacks:
                 btn_export.clicked.connect(callbacks['export_unified'])
             layout.addWidget(btn_export)

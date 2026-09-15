@@ -5,11 +5,11 @@ Provides navigation controls and position indicators for table viewing
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel, QLineEdit, QSizePolicy
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
 from PyQt5.QtGui import QFont
 from styles.styles import AppStyles
 from translations.translations import TranslationManager
-from icons.icon_manager import setup_icon_button
+from icons.icon_manager import get_icon
 
 
 class TableNavigationBar(QWidget):
@@ -52,7 +52,10 @@ class TableNavigationBar(QWidget):
         layout.addSpacing(8)
         
         # First row button
-        self.btn_first = QPushButton("⏮")
+        self.btn_first = QPushButton()
+        self.btn_first.setIcon(get_icon('page_first', 16))
+        self.btn_first.setIconSize(QSize(16, 16))
+        self.btn_first.setAccessibleName(self.translator.tr('pagination_first') if self.translator else 'First Row')
         self.btn_first.setFixedSize(28, 24)
         self.btn_first.setToolTip(self.translator.tr('pagination_first') if self.translator else 'First Row')
         self.btn_first.setStyleSheet("""
@@ -77,7 +80,10 @@ class TableNavigationBar(QWidget):
         layout.addWidget(self.btn_first)
         
         # Previous row button
-        self.btn_prev = QPushButton("◀")
+        self.btn_prev = QPushButton()
+        self.btn_prev.setIcon(get_icon('page_prev', 16))
+        self.btn_prev.setIconSize(QSize(16, 16))
+        self.btn_prev.setAccessibleName(self.translator.tr('pagination_previous') if self.translator else 'Previous Row')
         self.btn_prev.setFixedSize(28, 24)
         self.btn_prev.setToolTip(self.translator.tr('pagination_previous') if self.translator else 'Previous Row')
         self.btn_prev.setStyleSheet(self.btn_first.styleSheet())
@@ -114,7 +120,10 @@ class TableNavigationBar(QWidget):
         layout.addWidget(self.total_label)
         
         # Next row button
-        self.btn_next = QPushButton("▶")
+        self.btn_next = QPushButton()
+        self.btn_next.setIcon(get_icon('page_next', 16))
+        self.btn_next.setIconSize(QSize(16, 16))
+        self.btn_next.setAccessibleName(self.translator.tr('pagination_next') if self.translator else 'Next Row')
         self.btn_next.setFixedSize(28, 24)
         self.btn_next.setToolTip(self.translator.tr('pagination_next') if self.translator else 'Next Row')
         self.btn_next.setStyleSheet(self.btn_first.styleSheet())
@@ -122,7 +131,10 @@ class TableNavigationBar(QWidget):
         layout.addWidget(self.btn_next)
         
         # Last row button
-        self.btn_last = QPushButton("⏭")
+        self.btn_last = QPushButton()
+        self.btn_last.setIcon(get_icon('page_last', 16))
+        self.btn_last.setIconSize(QSize(16, 16))
+        self.btn_last.setAccessibleName(self.translator.tr('pagination_last') if self.translator else 'Last Row')
         self.btn_last.setFixedSize(28, 24)
         self.btn_last.setToolTip(self.translator.tr('pagination_last') if self.translator else 'Last Row')
         self.btn_last.setStyleSheet(self.btn_first.styleSheet())
@@ -188,6 +200,11 @@ class TableNavigationBar(QWidget):
     def refresh_translations(self):
         """Refresh translations when language changes"""
         if self.translator:
+            is_rtl = self.translator.current_language == 'ar'
+            self.btn_first.setIcon(get_icon('page_last' if is_rtl else 'page_first', 16))
+            self.btn_prev.setIcon(get_icon('page_next' if is_rtl else 'page_prev', 16))
+            self.btn_next.setIcon(get_icon('page_prev' if is_rtl else 'page_next', 16))
+            self.btn_last.setIcon(get_icon('page_first' if is_rtl else 'page_last', 16))
             self.btn_first.setToolTip(self.translator.tr('pagination_first'))
             self.btn_prev.setToolTip(self.translator.tr('pagination_previous'))
             self.btn_next.setToolTip(self.translator.tr('pagination_next'))

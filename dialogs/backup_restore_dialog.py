@@ -7,11 +7,12 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem, QLabel, QMessageBox, QFileDialog, QHeaderView,
     QGroupBox, QProgressBar, QCheckBox, QDialogButtonBox, QWidget
 )
-from icons.icon_manager import setup_icon_button
+from icons.icon_manager import setup_icon_button, get_icon
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from typing import Optional
 from pathlib import Path
 from datetime import datetime
+from html import escape
 from utils.backup_restore import BackupRestoreManager
 from translations.translations import TranslationManager
 from utils.logger import get_logger
@@ -64,7 +65,10 @@ class ImportBackupPreviewDialog(QDialog):
         is_valid, error_msg, preview = self.backup_manager.validate_backup_file(self.file_path)
         
         if not is_valid:
-            error_label = QLabel(f"<b>{self.translator.tr('backup_invalid_file')}</b><br>{error_msg}")
+            error_label = QLabel(
+                f"<b>{escape(self.translator.tr('backup_invalid_file'))}</b><br>"
+                f"{escape(str(error_msg))}"
+            )
             error_label.setWordWrap(True)
             error_label.setStyleSheet("color: #c0392b; padding: 12px;")
             layout.addWidget(error_label)
@@ -75,7 +79,7 @@ class ImportBackupPreviewDialog(QDialog):
         
         # Show preview
         filename = Path(self.file_path).name
-        file_label = QLabel(f"<b>{filename}</b>")
+        file_label = QLabel(f"<b>{escape(filename)}</b>")
         layout.addWidget(file_label)
         
         preview_layout = QVBoxLayout()
@@ -146,23 +150,34 @@ class BackupThread(QThread):
     finished = pyqtSignal(bool, str)
     progress = pyqtSignal(str)
     
-    def __init__(self, backup_manager: BackupRestoreManager, backup_type: str = 'MANUAL'):
+    def __init__(self, backup_manager: BackupRestoreManager, backup_type: str = 'MANUAL', translator: TranslationManager = None):
         super().__init__()
         self.backup_manager = backup_manager
         self.backup_type = backup_type
-    
+        self.translator = translator
+
+    def _tr(self, key: str, fallback: str, **kwargs) -> str:
+        return self.translator.tr(key, **kwargs) if self.translator else fallback
+
     def run(self):
         """Run backup operation"""
         try:
-            self.progress.emit("Creating backup...")
+            self.progress.emit(self._tr('msg_creating_backup', 'Creating backup...'))
             success, backup_path, backup_info = self.backup_manager.create_backup(self.backup_type)
             if success:
-                self.finished.emit(True, f"Backup created successfully!\nLocation: {backup_path}")
+                self.finished.emit(
+                    True,
+                    f"{self._tr('msg_backup_created_success', 'Backup created successfully!')}\n"
+                    f"{self._tr('msg_backup_location', 'Location')}: {backup_path}"
+                )
             else:
-                error = backup_info.get('error', 'Unknown error')
-                self.finished.emit(False, f"Backup failed: {error}")
+                error = backup_info.get('error', self._tr('msg_error', 'Error'))
+                self.finished.emit(
+                    False,
+                    f"{self._tr('msg_backup_failed', 'Backup failed')}: {error}"
+                )
         except Exception as e:
-            self.finished.emit(False, f"Error: {str(e)}")
+            self.finished.emit(False, f"{self._tr('msg_error', 'Error')}: {e}")
 
 
 class RestoreThread(QThread):
@@ -170,23 +185,27 @@ class RestoreThread(QThread):
     finished = pyqtSignal(bool, str)
     progress = pyqtSignal(str)
     
-    def __init__(self, backup_manager: BackupRestoreManager, backup_path: str, merge: bool = False):
+    def __init__(self, backup_manager: BackupRestoreManager, backup_path: str, merge: bool = False, translator: TranslationManager = None):
         super().__init__()
         self.backup_manager = backup_manager
         self.backup_path = backup_path
         self.merge = merge
-    
+        self.translator = translator
+
+    def _tr(self, key: str, fallback: str, **kwargs) -> str:
+        return self.translator.tr(key, **kwargs) if self.translator else fallback
+
     def run(self):
         """Run restore operation"""
         try:
-            if self.merge:
-                self.progress.emit("Merging backup...")
-            else:
-                self.progress.emit("Restoring backup...")
+            self.progress.emit(
+                self._tr('msg_merging_backup', 'Merging backup...')
+                if self.merge else self._tr('msg_restoring_backup', 'Restoring backup...')
+            )
             success, message = self.backup_manager.restore_backup(self.backup_path, merge=self.merge)
             self.finished.emit(success, message)
         except Exception as e:
-            self.finished.emit(False, f"Error: {str(e)}")
+            self.finished.emit(False, f"{self._tr('msg_error', 'Error')}: {e}")
 
 
 class BackupRestoreDialog(QDialog):
@@ -370,9 +389,13 @@ class BackupRestoreDialog(QDialog):
                 date_item = QTableWidgetItem(date_str)
                 self.backup_table.setItem(row, 2, date_item)
                 
-                # Encrypted indicator
-                encrypted = "🔒" if backup.get('is_encrypted', False) else ""
-                encrypted_item = QTableWidgetItem(encrypted)
+                # Encrypted indicator: use an actual icon rather than a
+                # Unicode lock glyph, with an accessible tooltip.
+                encrypted_item = QTableWidgetItem()
+                if backup.get('is_encrypted', False):
+                    encrypted_item.setIcon(get_icon('lock', 18))
+                    encrypted_item.setToolTip(self.translator.tr('backup_preview_encrypted'))
+                    encrypted_item.setData(Qt.AccessibleTextRole, self.translator.tr('backup_preview_encrypted'))
                 self.backup_table.setItem(row, 3, encrypted_item)
             
             self.status_label.setText(f"{len(backups)} {self.translator.tr('msg_backups_found').lower()}")
@@ -403,7 +426,7 @@ class BackupRestoreDialog(QDialog):
             self.progress_bar.setRange(0, 0)  # Indeterminate
             self.status_label.setText(self.translator.tr('msg_creating_backup'))
             
-            self.backup_thread = BackupThread(self.backup_manager, 'MANUAL')
+            self.backup_thread = BackupThread(self.backup_manager, 'MANUAL', self.translator)
             self.backup_thread.finished.connect(self.on_backup_finished)
             self.backup_thread.progress.connect(self.status_label.setText)
             self.backup_thread.start()
@@ -447,7 +470,7 @@ class BackupRestoreDialog(QDialog):
             self.progress_bar.setRange(0, 0)
             self.status_label.setText(self.translator.tr('msg_restoring_backup'))
             
-            self.restore_thread = RestoreThread(self.backup_manager, backup_path, merge=False)
+            self.restore_thread = RestoreThread(self.backup_manager, backup_path, merge=False, translator=self.translator)
             self.restore_thread.finished.connect(self.on_restore_finished)
             self.restore_thread.progress.connect(self.status_label.setText)
             self.restore_thread.start()
@@ -478,7 +501,7 @@ class BackupRestoreDialog(QDialog):
             self.progress_bar.setRange(0, 0)
             self.status_label.setText(self.translator.tr('msg_merging_backup'))
             
-            self.restore_thread = RestoreThread(self.backup_manager, backup_path, merge=True)
+            self.restore_thread = RestoreThread(self.backup_manager, backup_path, merge=True, translator=self.translator)
             self.restore_thread.finished.connect(self.on_restore_finished)
             self.restore_thread.progress.connect(self.status_label.setText)
             self.restore_thread.start()
@@ -534,9 +557,22 @@ class BackupRestoreDialog(QDialog):
         if copy_to_folder:
             try:
                 import shutil
-                dest = Path(self.backup_manager.backup_dir) / Path(filename).name
-                if Path(filename).resolve() != dest.resolve():
-                    shutil.copy2(filename, dest)
+                source_path = Path(filename).resolve()
+                backup_dir = Path(self.backup_manager.backup_dir).resolve()
+                dest = backup_dir / source_path.name
+                if source_path != dest:
+                    # Never overwrite an existing backup imported under the
+                    # same filename; retain every user-selected backup.
+                    if dest.exists():
+                        stem, suffix = dest.stem, dest.suffix
+                        counter = 1
+                        while True:
+                            candidate = backup_dir / f"{stem}_{counter}{suffix}"
+                            if not candidate.exists():
+                                dest = candidate
+                                break
+                            counter += 1
+                    shutil.copy2(source_path, dest)
                     filename = str(dest)
             except Exception as e:
                 logger.warning(f"Could not copy backup to folder: {e}")
@@ -552,7 +588,7 @@ class BackupRestoreDialog(QDialog):
             else self.translator.tr('msg_restoring_backup')
         )
         
-        self.restore_thread = RestoreThread(self.backup_manager, filename, merge=merge)
+        self.restore_thread = RestoreThread(self.backup_manager, filename, merge=merge, translator=self.translator)
         self.restore_thread.finished.connect(self.on_restore_finished)
         self.restore_thread.progress.connect(self.status_label.setText)
         self.restore_thread.start()

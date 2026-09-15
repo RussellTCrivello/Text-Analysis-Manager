@@ -7,6 +7,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from translations.translations import TranslationManager
 from utils.logger import get_logger
+from utils.export_safety import sanitize_spreadsheet_value
 
 # Import print settings
 try:
@@ -136,7 +137,11 @@ def export_to_excel(
         
         # Add data column headers
         for col_idx, (_, col_name) in enumerate(export_columns, start=2):
-            cell = ws.cell(row=current_row, column=col_idx, value=str(col_name))
+            cell = ws.cell(
+                row=current_row,
+                column=col_idx,
+                value=sanitize_spreadsheet_value(str(col_name))
+            )
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = header_align
@@ -262,7 +267,11 @@ def add_excel_header(ws, settings, table_name: str, start_row: int, is_rtl: bool
     
     # Header line 1 (Organization)
     if settings and settings.header_left_line1:
-        cell = ws.cell(row=current_row, column=1, value=settings.header_left_line1)
+        cell = ws.cell(
+            row=current_row,
+            column=1,
+            value=sanitize_spreadsheet_value(settings.header_left_line1)
+        )
         cell.font = Font(bold=True, size=14, color='2C3E50', name=arabic_font)
         cell.alignment = Alignment(horizontal=text_align, vertical='center')
         ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=5)
@@ -270,7 +279,11 @@ def add_excel_header(ws, settings, table_name: str, start_row: int, is_rtl: bool
     
     # Header line 2 (Department)
     if settings and settings.header_left_line2:
-        cell = ws.cell(row=current_row, column=1, value=settings.header_left_line2)
+        cell = ws.cell(
+            row=current_row,
+            column=1,
+            value=sanitize_spreadsheet_value(settings.header_left_line2)
+        )
         cell.font = Font(size=11, color='34495E', name=arabic_font)
         cell.alignment = Alignment(horizontal=text_align, vertical='center')
         ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=5)
@@ -286,13 +299,21 @@ def add_excel_header(ws, settings, table_name: str, start_row: int, is_rtl: bool
             if date_str:
                 info_text += f"  |  {date_str}" if info_text else date_str
             
-            cell = ws.cell(row=start_row, column=8, value=info_text)
+            cell = ws.cell(
+                row=start_row,
+                column=8,
+                value=sanitize_spreadsheet_value(info_text)
+            )
             cell.font = Font(bold=True, size=11, color='2C3E50', name='Segoe UI')  # Numbers stay LTR
             cell.alignment = Alignment(horizontal=opposite_align)
     
     # Report title
     current_row += 1
-    cell = ws.cell(row=current_row, column=1, value=table_name)
+    cell = ws.cell(
+        row=current_row,
+        column=1,
+        value=sanitize_spreadsheet_value(table_name)
+    )
     cell.font = Font(bold=True, size=12, color='667EEA', name=arabic_font)
     cell.alignment = Alignment(horizontal='center', vertical='center')
     ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=5)
@@ -335,7 +356,11 @@ def add_excel_footer(ws, settings, total_records: int, start_row: int, is_rtl: b
     
     footer_text = ' | '.join(parts)
     
-    cell = ws.cell(row=start_row, column=1, value=footer_text)
+    cell = ws.cell(
+        row=start_row,
+        column=1,
+        value=sanitize_spreadsheet_value(footer_text)
+    )
     cell.font = Font(size=9, color='7F8C8D', italic=True, name=arabic_font)
     cell.alignment = Alignment(horizontal='center')
     ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=8)
@@ -347,30 +372,33 @@ def format_field_name(key: str) -> str:
 
 
 def format_value_for_excel(value, col_key: str = None) -> str:
-    """Format value for Excel export - handles None values properly"""
+    """Format a value for Excel while preventing formula evaluation."""
     if value is None:
-        return '-'  # Display dash instead of empty or "None"
+        formatted = '-'  # Display dash instead of empty or "None"
     elif isinstance(value, datetime):
-        return value.strftime('%Y-%m-%d %H:%M:%S')
+        formatted = value.strftime('%Y-%m-%d %H:%M:%S')
     elif isinstance(value, bool):
-        return 'Yes' if value else 'No'
+        formatted = 'Yes' if value else 'No'
     elif isinstance(value, (int, float)) and col_key:
         # Check if this is importance column
         if 'importance' in col_key.lower():
             try:
-                return f"{float(value) * 100:.0f}%"
-            except:
-                return str(value)
+                formatted = f"{float(value) * 100:.0f}%"
+            except (TypeError, ValueError):
+                formatted = str(value)
         elif col_key == 'record_type':
             type_map = {
                 'analysis': 'Analysis',
                 'content': 'Content',
                 'source': 'Source'
             }
-            return type_map.get(str(value).lower(), str(value))
-        return str(value)
-    
-    return str(value) if value else '-'
+            formatted = type_map.get(str(value).lower(), str(value))
+        else:
+            formatted = str(value)
+    else:
+        formatted = str(value) if value else '-'
+
+    return sanitize_spreadsheet_value(formatted)
 
 
 def export_timeline_to_excel(events: List[Dict], file_path: str, translator, 
@@ -409,7 +437,11 @@ def export_timeline_to_excel(events: List[Dict], file_path: str, translator,
     header_font = Font(size=11, bold=True, color='FFFFFF', name=arabic_font)
     
     for col_idx, header in enumerate(headers, 1):
-        cell = ws.cell(row=start_row, column=col_idx, value=header)
+        cell = ws.cell(
+            row=start_row,
+            column=col_idx,
+            value=sanitize_spreadsheet_value(header)
+        )
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
@@ -472,7 +504,11 @@ def export_timeline_to_excel(events: List[Dict], file_path: str, translator,
         # Write row
         row_data = [date_str, title, description, people, places, classification, source, record_type]
         for col_idx, value in enumerate(row_data, 1):
-            cell = ws.cell(row=start_row, column=col_idx, value=value)
+            cell = ws.cell(
+                row=start_row,
+                column=col_idx,
+                value=sanitize_spreadsheet_value(value)
+            )
             cell.font = Font(size=10, name=arabic_font)
             cell.alignment = Alignment(horizontal='left' if not is_rtl else 'right', 
                                     vertical='top', wrap_text=True)

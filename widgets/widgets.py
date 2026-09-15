@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QFileDialog, QLabel, QVBoxLayout, QListWidget, QListWidgetItem,
     QTextEdit, QFrame, QScrollArea, QCompleter, QStyledItemDelegate
 )
-from icons.icon_manager import setup_icon_button
+from icons.icon_manager import setup_icon_button, get_icon
 from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QRegExp, QStringListModel
 from PyQt5.QtGui import QKeyEvent, QRegExpValidator, QValidator, QFont, QColor, QPalette
 from styles.styles import AppStyles
@@ -87,7 +87,7 @@ class AutoCompleteLineEdit(QLineEdit):
             self.setStyleSheet(AppStyles.get_component_style('new_entry_highlight'))
             # Update tooltip
             new_text = self.translator.tr('msg_new_entry') if self.translator else "New Entry"
-            self.setToolTip(f"✨ {new_text}")
+            self.setToolTip(new_text)
         else:
             # Reset to default style
             self.setStyleSheet("")
@@ -232,10 +232,10 @@ class SearchableComboBox(QWidget):
             
             self.btn_add = QPushButton()
             tooltip = self.translator.tr('btn_add_new') if self.translator else "Add New"
-            setup_icon_button(self.btn_add, 'btn_add_new', tooltip, size=28)
+            self.btn_add.setProperty('class', 'success')
+            setup_icon_button(self.btn_add, 'btn_add_new', tooltip, size=28, use_white_icon=True)
             # Set fixed size for consistent appearance
             self.btn_add.setFixedSize(32, 32)
-            self.btn_add.setProperty('class', 'success')
             # Disable autoDefault to prevent Enter key from triggering this button
             self.btn_add.setAutoDefault(False)
             self.btn_add.setDefault(False)
@@ -272,8 +272,8 @@ class SearchableComboBox(QWidget):
             
             # Add "Add New" option at the end
             if self.allow_add_new and len(self.filtered_items) > 0:
-                add_new_text = "➕ " + (self.translator.tr('btn_add_new') if self.translator else "Add New") + "..."
-                self.combo.addItem(add_new_text, -1)
+                add_new_text = (self.translator.tr('btn_add_new') if self.translator else "Add New") + "..."
+                self.combo.addItem(get_icon('add', 16), add_new_text, -1)
             
             # Unblock signals
             self.combo.blockSignals(False)
@@ -342,9 +342,13 @@ class SearchableComboBox(QWidget):
             self.add_new_requested.emit()
     
     def refresh_items(self):
-        """Refresh items from callback or external source"""
-        # This should be overridden or called with new items
-        pass
+        """Refresh the visible list from the current item provider state."""
+        # Callers that add a record generally update ``items_data`` in their
+        # callback. Rebuilding the filtered view here keeps the add-new control
+        # deterministic without relying on a placeholder override.
+        self.filtered_items = list(self.items_data)
+        self.refresh_combo()
+        return self.items_data
     
     def get_selected_id(self) -> Optional[int]:
         """Get currently selected ID"""
@@ -380,7 +384,14 @@ class FileAttachmentWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(AppStyles.get_spacing(1))  # 8px - 8px grid (rounding 5px to 8px)
         
-        # Display label
+        # Graphical attachment marker and descriptive text are separate
+        # controls so the icon is never encoded as a Unicode glyph.
+        self.attachment_icon = QLabel()
+        self.attachment_icon.setPixmap(get_icon('attach_files', 18).pixmap(18, 18))
+        self.attachment_icon.setToolTip(
+            self.translator.tr('btn_attach_files') if self.translator else 'Attachments'
+        )
+        layout.addWidget(self.attachment_icon)
         self.label = QLabel(self.translator.tr('msg_no_files') if self.translator else "No files attached")
         self.label.setWordWrap(True)
         self.label.setStyleSheet(AppStyles.get_component_style('attachment_label_empty'))
@@ -444,10 +455,10 @@ class FileAttachmentWidget(QWidget):
         else:
             if len(self.file_paths) == 1:
                 filename = os.path.basename(self.file_paths[0])
-                self.label.setText(f"📎 {filename}")
+                self.label.setText(filename)
             else:
-                files_text = self.translator.tr('msg_files_attached', count=len(self.file_paths)) if self.translator else f"📎 {len(self.file_paths)} files attached"
-                self.label.setText(f"📎 {files_text}")
+                files_text = self.translator.tr('msg_files_attached', count=len(self.file_paths)) if self.translator else f"{len(self.file_paths)} files attached"
+                self.label.setText(files_text)
             self.label.setStyleSheet(AppStyles.get_component_style('attachment_label_filled'))
             self.btn_clear.setVisible(True)
     
@@ -900,13 +911,25 @@ class MultiEmailUrlWidget(QWidget):
             else:
                 invalid_entries.append(entry)
         
+        translator = getattr(self, 'translator', None)
         if invalid_entries:
-            self.status_label.setText(
-                f"⚠ {len(invalid_entries)} invalid: {', '.join(invalid_entries[:3])}"
+            message = (
+                translator.tr(
+                    'msg_invalid_entries_count',
+                    count=len(invalid_entries),
+                    entries=', '.join(invalid_entries[:3])
+                )
+                if translator else
+                f"Warning: {len(invalid_entries)} invalid: {', '.join(invalid_entries[:3])}"
             )
+            self.status_label.setText(message)
             self.status_label.setStyleSheet(AppStyles.get_component_style('status_label_error'))
         else:
-            self.status_label.setText(f"✓ All {valid_count} entries are valid")
+            message = (
+                translator.tr('msg_valid_entries_count', count=valid_count)
+                if translator else f"Valid: all {valid_count} entries"
+            )
+            self.status_label.setText(message)
             self.status_label.setStyleSheet(AppStyles.get_component_style('status_label_success'))
     
     def format_entries(self):

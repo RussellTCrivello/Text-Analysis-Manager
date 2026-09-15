@@ -20,6 +20,7 @@ class CircularNavButton(QPushButton):
         super().__init__(parent)
         self.icon_name = icon_name
         self.setToolTip(tooltip_text)
+        self.setAccessibleName(tooltip_text or icon_name.replace('_', ' ').title())
         self.setObjectName("circularNavButton")
         self.setCursor(QCursor(Qt.PointingHandCursor))
         
@@ -32,6 +33,11 @@ class CircularNavButton(QPushButton):
         if not icon.isNull():
             self.setIcon(icon)
             self.setIconSize(QSize(18, 18))
+
+    def set_icon_name(self, icon_name: str):
+        """Change the directional icon while retaining the button action."""
+        self.icon_name = icon_name
+        self._setup_icon()
 
 
 class PageIndicatorLabel(QLabel):
@@ -73,12 +79,19 @@ class PaginationWidget(QWidget):
         self.translator = translator
         self.current_page = 1
         self.page_size = 50
+        try:
+            from config.config_manager import ConfigManager
+            configured_size = int(ConfigManager().get('Application', 'page_size', 50))
+            if configured_size in {25, 50, 100, 200, 500}:
+                self.page_size = configured_size
+        except (TypeError, ValueError, OSError):
+            pass
         self.total_items = 0
         self.total_pages = 0
         
         # Apply RTL/LTR direction based on current language
-        is_rtl = self.translator.current_language == 'ar'
-        direction = Qt.RightToLeft if is_rtl else Qt.LeftToRight
+        self.is_rtl = self.translator.current_language == 'ar'
+        direction = Qt.RightToLeft if self.is_rtl else Qt.LeftToRight
         self.setLayoutDirection(direction)
         
         self.setup_ui()
@@ -129,14 +142,20 @@ class PaginationWidget(QWidget):
         nav_layout.setSpacing(AppStyles.get_spacing(1))  # 8px - 8px grid spacing
         nav_layout.setAlignment(Qt.AlignVCenter)  # Vertical center alignment
         
+        # Directional icons follow the semantic action in both LTR and RTL.
+        first_icon = 'btn_page_last' if self.is_rtl else 'btn_page_first'
+        previous_icon = 'btn_page_next' if self.is_rtl else 'btn_page_prev'
+        next_icon = 'btn_page_prev' if self.is_rtl else 'btn_page_next'
+        last_icon = 'btn_page_first' if self.is_rtl else 'btn_page_last'
+
         # First page button
-        self.btn_first = CircularNavButton("btn_page_first", "")
+        self.btn_first = CircularNavButton(first_icon, "")
         self.btn_first.setFixedSize(BTN_SIZE, BTN_SIZE)
         self.btn_first.clicked.connect(self.go_to_first)
         nav_layout.addWidget(self.btn_first, alignment=Qt.AlignVCenter)
         
         # Previous button
-        self.btn_prev = CircularNavButton("btn_page_prev", "")
+        self.btn_prev = CircularNavButton(previous_icon, "")
         self.btn_prev.setFixedSize(BTN_SIZE, BTN_SIZE)
         self.btn_prev.clicked.connect(self.go_to_previous)
         nav_layout.addWidget(self.btn_prev, alignment=Qt.AlignVCenter)
@@ -148,13 +167,13 @@ class PaginationWidget(QWidget):
         nav_layout.addWidget(self.page_indicator, alignment=Qt.AlignVCenter)
         
         # Next button
-        self.btn_next = CircularNavButton("btn_page_next", "")
+        self.btn_next = CircularNavButton(next_icon, "")
         self.btn_next.setFixedSize(BTN_SIZE, BTN_SIZE)
         self.btn_next.clicked.connect(self.go_to_next)
         nav_layout.addWidget(self.btn_next, alignment=Qt.AlignVCenter)
         
         # Last page button
-        self.btn_last = CircularNavButton("btn_page_last", "")
+        self.btn_last = CircularNavButton(last_icon, "")
         self.btn_last.setFixedSize(BTN_SIZE, BTN_SIZE)
         self.btn_last.clicked.connect(self.go_to_last)
         nav_layout.addWidget(self.btn_last, alignment=Qt.AlignVCenter)
@@ -282,10 +301,14 @@ class PaginationWidget(QWidget):
         next_tip = self.translator.tr('pagination_next') if hasattr(self.translator, 'tr') else 'Next Page'
         last_tip = self.translator.tr('pagination_last') if hasattr(self.translator, 'tr') else 'Last Page'
         
-        self.btn_first.setToolTip(first_tip)
-        self.btn_prev.setToolTip(prev_tip)
-        self.btn_next.setToolTip(next_tip)
-        self.btn_last.setToolTip(last_tip)
+        for button, label in (
+            (self.btn_first, first_tip),
+            (self.btn_prev, prev_tip),
+            (self.btn_next, next_tip),
+            (self.btn_last, last_tip),
+        ):
+            button.setToolTip(label)
+            button.setAccessibleName(label)
     
     def go_to_first(self):
         """Go to first page"""
@@ -366,6 +389,11 @@ class PaginationWidget(QWidget):
         is_rtl = self.translator.current_language == 'ar'
         direction = Qt.RightToLeft if is_rtl else Qt.LeftToRight
         self.setLayoutDirection(direction)
+        self.is_rtl = is_rtl
+        self.btn_first.set_icon_name('btn_page_last' if is_rtl else 'btn_page_first')
+        self.btn_prev.set_icon_name('btn_page_next' if is_rtl else 'btn_page_prev')
+        self.btn_next.set_icon_name('btn_page_prev' if is_rtl else 'btn_page_next')
+        self.btn_last.set_icon_name('btn_page_first' if is_rtl else 'btn_page_last')
         
         # Apply to all child widgets
         for child in self.findChildren(QWidget):

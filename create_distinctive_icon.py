@@ -23,7 +23,7 @@ def create_windows_optimized_ico(images: List[Image.Image], output_path: str) ->
     Create a Windows-optimized ICO file with proper format handling.
     
     Key optimizations:
-    - BMP format for small icons (≤48px) - better legacy Windows compatibility
+    - BMP format for small icons (up to 48px) - better legacy Windows compatibility
     - PNG format for large icons (>48px) - better quality + smaller file size
     - Proper alpha channel handling (non-premultiplied)
     - Clean alpha edges to prevent artifacts

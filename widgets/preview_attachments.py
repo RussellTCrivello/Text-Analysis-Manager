@@ -11,6 +11,10 @@ from PyQt5.QtCore import Qt, QSize, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImage, QFont
 from translations.translations import TranslationManager
 from styles.styles import AppStyles
+from icons.icon_manager import get_icon
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ImagePreviewWidget(QWidget):
@@ -193,11 +197,16 @@ class PDFPreviewWidget(QWidget):
                 if platform.system() == 'Windows':
                     os.startfile(filename)
                 elif platform.system() == 'Darwin':  # macOS
-                    subprocess.run(['open', filename])
+                    subprocess.run(['open', filename], check=True)
                 else:  # Linux
-                    subprocess.run(['xdg-open', filename])
-            except Exception:
-                pass
+                    subprocess.run(['xdg-open', filename], check=True)
+            except Exception as e:
+                logger.warning(f"Could not open PDF with system viewer: {e}")
+                QMessageBox.warning(
+                    self,
+                    self.translator.tr('msg_warning'),
+                    self.translator.tr('attachment_open_failed')
+                )
     
     def download_pdf(self):
         """Download/save current PDF"""
@@ -217,7 +226,7 @@ class PDFPreviewWidget(QWidget):
                 from shutil import copyfile
                 copyfile(self.current_pdf_path, filename)
                 QMessageBox.information(self, self.translator.tr('msg_success'), 
-                                      "File saved successfully")
+                                      self.translator.tr('msg_file_saved_success'))
             except Exception as e:
                 QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
 
@@ -310,7 +319,7 @@ class DocumentPreviewWidget(QWidget):
                 from shutil import copyfile
                 copyfile(self.current_doc_path, filename)
                 QMessageBox.information(self, self.translator.tr('msg_success'), 
-                                      "File saved successfully")
+                                      self.translator.tr('msg_file_saved_success'))
             except Exception as e:
                 QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
 
@@ -338,13 +347,25 @@ class AttachmentPreviewDialog(QWidget):
         self.tab_widget = QTabWidget()
         
         self.image_preview = ImagePreviewWidget(self, self.translator)
-        self.tab_widget.addTab(self.image_preview, "🖼️ " + self.translator.tr('lbl_image_preview'))
+        self.tab_widget.addTab(
+            self.image_preview,
+            get_icon('image', 18),
+            self.translator.tr('lbl_image_preview')
+        )
         
         self.pdf_preview = PDFPreviewWidget(self, self.translator)
-        self.tab_widget.addTab(self.pdf_preview, "📄 " + self.translator.tr('lbl_pdf_preview'))
+        self.tab_widget.addTab(
+            self.pdf_preview,
+            get_icon('file_pdf', 18),
+            self.translator.tr('lbl_pdf_preview')
+        )
         
         self.doc_preview = DocumentPreviewWidget(self, self.translator)
-        self.tab_widget.addTab(self.doc_preview, "📝 " + self.translator.tr('lbl_document_preview'))
+        self.tab_widget.addTab(
+            self.doc_preview,
+            get_icon('document', 18),
+            self.translator.tr('lbl_document_preview')
+        )
         
         layout.addWidget(self.tab_widget)
     

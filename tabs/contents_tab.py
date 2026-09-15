@@ -3,12 +3,13 @@ Contents Tab - Dedicated management for content records
 Page-specific buttons: View Attachments, Link to Analysis, Preview Content
 """
 from typing import List
+from html import escape
 from PyQt5.QtWidgets import QDialog, QFileDialog, QMessageBox
 
 from tabs.base_tab import BaseTableTab
 from core.toolbar_factory import ToolbarConfig, ButtonConfig
 from db.db_manager import DatabaseManager
-from dialogs.dialogs import ContentDialog
+from dialogs.dialogs import ContentDialog, _show_attachment_cleanup_warning
 from translations.translations import TranslationManager
 from utils.logger import get_logger
 
@@ -158,13 +159,16 @@ class ContentsTab(BaseTableTab):
         if dialog.exec_() == QDialog.Accepted and dialog.result:
             try:
                 new_id = DatabaseManager.add_content(dialog.result)
+                cleanup_failures = dialog.commit_attachment_changes()
                 # Log audit trail
                 from utils.audit_trail import AuditTrail
                 AuditTrail.log_create('contents', new_id, dialog.result)
                 QMessageBox.information(self, self.translator.tr('msg_success'),
                                       self.translator.tr('msg_record_added'))
+                _show_attachment_cleanup_warning(self, self.translator, cleanup_failures)
                 self.load_data()
             except Exception as e:
+                dialog.rollback_attachment_changes()
                 QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
     
     def edit_record(self):
@@ -175,6 +179,7 @@ class ContentsTab(BaseTableTab):
                               self.translator.tr('msg_select_record'))
             return
         
+        dialog = None
         try:
             content = DatabaseManager.get_content_by_id(selected_id)
             if content:
@@ -187,13 +192,17 @@ class ContentsTab(BaseTableTab):
                 )
                 if dialog.exec_() == QDialog.Accepted and dialog.result:
                     DatabaseManager.update_content(selected_id, dialog.result)
+                    cleanup_failures = dialog.commit_attachment_changes()
                     # Log audit trail
                     from utils.audit_trail import AuditTrail
                     AuditTrail.log_update('contents', selected_id, old_data, dialog.result)
                     QMessageBox.information(self, self.translator.tr('msg_success'),
                                           self.translator.tr('msg_record_updated'))
+                    _show_attachment_cleanup_warning(self, self.translator, cleanup_failures)
                     self.load_data()
         except Exception as e:
+            if dialog is not None:
+                dialog.rollback_attachment_changes()
             QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
     
     def delete_from_db(self, record_id: int):
@@ -228,20 +237,21 @@ class ContentsTab(BaseTableTab):
                         try:
                             # Map CSV columns to database fields
                             content_data = {
-                                'title': row.get('title', row.get('Title', '')),
-                                'content_data': row.get('content_data', row.get('Content', '')),
-                                'attachments': row.get('attachments', row.get('Attachments', '')),
-                                'note': row.get('note', row.get('Note', '')),
+                                'title': row.get('title', row.get('Title', '')) or None,
+                                'content_data': row.get('content_data', row.get('Content', '')) or '',
+                                'attachments': row.get('attachments', row.get('Attachments', '')) or None,
+                                'note': row.get('note', row.get('Note', '')) or None,
                                 'importance': float(row.get('importance', '0') or '0'),
-                                'date_content': row.get('date_content', row.get('Date Content', '')),
-                                'date_creation': row.get('date_creation', row.get('Date Creation', '')),
-                                'sources_id': row.get('sources_id', row.get('Sources ID', '')),
-                                'date_modified': row.get('date_modified', row.get('Date Modified', '')),
+                                'date_content': row.get('date_content', row.get('Date Content', '')) or None,
+                                'date_creation': row.get('date_creation', row.get('Date Creation', '')) or None,
+                                'sources_id': row.get('sources_id', row.get('Sources ID', '')) or None,
                             }
                             
-                            if content_data['title']:
+                            if content_data['content_data'].strip():
                                 DatabaseManager.add_content(content_data)
                                 imported_count += 1
+                            else:
+                                errors.append(f"Row {row_num}: Content data is required")
                         except Exception as e:
                             errors.append(f"Row {row_num}: {str(e)}")
                 
@@ -266,6 +276,7 @@ class ContentsTab(BaseTableTab):
                               self.translator.tr('msg_select_record'))
             return
         
+        dialog = None
         try:
             content = DatabaseManager.get_content_by_id(selected_id)
             if content:
@@ -285,10 +296,14 @@ class ContentsTab(BaseTableTab):
                 )
                 if dialog.exec_() == QDialog.Accepted and dialog.result:
                     DatabaseManager.add_content(dialog.result)
+                    cleanup_failures = dialog.commit_attachment_changes()
                     QMessageBox.information(self, self.translator.tr('msg_success'),
                                           self.translator.tr('msg_record_added'))
+                    _show_attachment_cleanup_warning(self, self.translator, cleanup_failures)
                     self.load_data()
         except Exception as e:
+            if dialog is not None:
+                dialog.rollback_attachment_changes()
             QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
 
 
@@ -371,27 +386,36 @@ class ContentsTab(BaseTableTab):
                 
                 layout = QVBoxLayout(dialog)
                 
-                # Title
-                title = content.get('title', self.translator.tr('lbl_no_title'))
-                title_label = QLabel(f"<h2>{title}</h2>")
+                # Title and source values come from the database; escape them
+                # before embedding them in the small rich-text presentation.
+                title = content.get('title') or self.translator.tr('lbl_no_title')
+                title_label = QLabel(f"<h2>{escape(str(title))}</h2>")
                 layout.addWidget(title_label)
                 
                 # Source info
-                source = content.get('source_name', self.translator.tr('lbl_unknown_source'))
-                date = content.get('date_content', '')
-                info_label = QLabel(f"<b>{self.translator.tr('lbl_source_prefix')}:</b> {source} | <b>{self.translator.tr('lbl_date_prefix')}:</b> {date}")
+                source = content.get('source_name') or self.translator.tr('lbl_unknown_source')
+                date = content.get('date_content') or ''
+                info_label = QLabel(
+                    f"<b>{escape(self.translator.tr('lbl_source_prefix'))}:</b> "
+                    f"{escape(str(source))} | "
+                    f"<b>{escape(self.translator.tr('lbl_date_prefix'))}:</b> "
+                    f"{escape(str(date))}"
+                )
                 layout.addWidget(info_label)
                 
                 # Content
                 content_edit = QTextEdit()
-                content_edit.setPlainText(content.get('content_data', ''))
+                content_edit.setPlainText(content.get('content_data') or '')
                 content_edit.setReadOnly(True)
                 layout.addWidget(content_edit)
                 
                 # Note
                 note = content.get('note', '')
                 if note:
-                    note_label = QLabel(f"<b>{self.translator.tr('lbl_note_prefix')}:</b> {note}")
+                    note_label = QLabel(
+                        f"<b>{escape(self.translator.tr('lbl_note_prefix'))}:</b> "
+                        f"{escape(str(note))}"
+                    )
                     note_label.setWordWrap(True)
                     layout.addWidget(note_label)
                 

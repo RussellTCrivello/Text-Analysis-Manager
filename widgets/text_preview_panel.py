@@ -7,10 +7,11 @@ from PyQt5.QtWidgets import (
     QPushButton, QScrollArea, QFrame, QSplitter, QGroupBox,
     QSizePolicy
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
 from PyQt5.QtGui import QFont, QColor, QPalette
 from translations.translations import TranslationManager
 from styles.styles import AppStyles
+from icons.icon_manager import get_icon
 
 
 class TextPreviewPanel(QWidget):
@@ -55,12 +56,16 @@ class TextPreviewPanel(QWidget):
         self.title_label = QLabel(self.translator.tr('lbl_full_text_preview'))
         self.title_label.setStyleSheet(AppStyles.get_component_style('preview_title'))
         
-        # Toggle button
-        self.toggle_btn = QPushButton("▼")
+        # Toggle button uses graphical chevrons rather than text glyphs.
+        self.toggle_btn = QPushButton()
+        self.toggle_btn.setIcon(get_icon('chevron_up', 18))
+        self.toggle_btn.setIconSize(QSize(18, 18))
         self.toggle_btn.setFixedSize(28, 28)
         self.toggle_btn.setStyleSheet(AppStyles.get_component_style('preview_toggle'))
         self.toggle_btn.clicked.connect(self.toggle_panel)
-        self.toggle_btn.setToolTip(self.translator.tr('btn_toggle_preview'))
+        toggle_text = self.translator.tr('btn_toggle_preview')
+        self.toggle_btn.setToolTip(toggle_text)
+        self.toggle_btn.setAccessibleName(toggle_text)
         
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
@@ -167,7 +172,8 @@ class TextPreviewPanel(QWidget):
         
         # Collapse panel by default
         self.content_frame.setVisible(False)
-        self.toggle_btn.setText("▲")
+        self.toggle_btn.setIcon(get_icon('chevron_up', 18))
+        self.toggle_btn.setIconSize(QSize(18, 18))
         
         # Show placeholder
         self.show_placeholder()
@@ -207,6 +213,7 @@ class TextPreviewPanel(QWidget):
         label.setStyleSheet(AppStyles.get_component_style('field_label'))
         
         value = QLabel("-")
+        value.setTextFormat(Qt.PlainText)
         value.setStyleSheet(AppStyles.get_component_style('field_value'))
         value.setWordWrap(True)
         
@@ -221,7 +228,10 @@ class TextPreviewPanel(QWidget):
         """Toggle panel expansion"""
         self.is_expanded = not self.is_expanded
         self.content_frame.setVisible(self.is_expanded)
-        self.toggle_btn.setText("▼" if self.is_expanded else "▲")
+        self.toggle_btn.setIcon(get_icon(
+            'chevron_down' if self.is_expanded else 'chevron_up', 18
+        ))
+        self.toggle_btn.setIconSize(QSize(18, 18))
         
         if self.is_expanded:
             self.setMinimumHeight(250)
@@ -239,7 +249,6 @@ class TextPreviewPanel(QWidget):
         # Set placeholder in primary text
         self.primary_group.text_edit.setHtml(f"""
             <div style="text-align: center; color: #95A5A6; padding: 20px;">
-                <p style="font-size: 12pt;">📋</p>
                 <p>{placeholder_text}</p>
             </div>
         """)
@@ -302,8 +311,15 @@ class TextPreviewPanel(QWidget):
         importance = data.get('importance') or data.get('source_importance') or data.get('content_importance')
         if importance is not None:
             try:
-                importance_val = f"{float(importance):.1f}%"
-            except:
+                numeric_importance = float(importance)
+                # Database values are normalized to 0..1; tolerate legacy
+                # percentage values above 1 without double-scaling them.
+                display_importance = (
+                    numeric_importance * 100
+                    if 0 <= numeric_importance <= 1 else numeric_importance
+                )
+                importance_val = f"{display_importance:.1f}%"
+            except (TypeError, ValueError):
                 importance_val = str(importance)
         else:
             importance_val = '-'
@@ -397,6 +413,28 @@ class TextPreviewPanel(QWidget):
                     if label_item and label_item.widget():
                         label_item.widget().setText(self.translator.tr(tr_key))
         
+        # Reapply theme-aware component styles when the user switches theme.
+        self.header_frame.setStyleSheet(AppStyles.get_component_style('preview_header'))
+        self.title_label.setStyleSheet(AppStyles.get_component_style('preview_title'))
+        self.toggle_btn.setStyleSheet(AppStyles.get_component_style('preview_toggle'))
+        self.content_frame.setStyleSheet(AppStyles.get_component_style('preview_content'))
+        for group, style_name in (
+            (self.primary_group, 'text_group_primary'),
+            (self.notes_group, 'text_group'),
+            (self.description_group, 'text_group'),
+        ):
+            group.setStyleSheet(AppStyles.get_component_style(style_name))
+            group.text_edit.setStyleSheet(
+                AppStyles.get_component_style(
+                    'text_edit_primary' if group is self.primary_group else 'text_edit_secondary'
+                )
+            )
+        for widget in self.field_widgets.values():
+            if widget.layout() and widget.layout().count() > 1:
+                value_widget = widget.layout().itemAt(1).widget()
+                if value_widget:
+                    value_widget.setStyleSheet(AppStyles.get_component_style('field_value'))
+
         # Refresh placeholder if no data
         if not self.current_data:
             self.show_placeholder()

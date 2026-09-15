@@ -24,6 +24,7 @@ class SettingsDialog(QDialog):
         self.translator = translator
         self.config = ConfigManager()
         self.parent_window = parent
+        self._original_theme = AppStyles.get_current_theme()
         self.setWindowTitle(self.translator.tr('settings_title'))
         # Apply fixed size to prevent resizing on button clicks or content changes
         AppStyles.apply_fixed_size(self, 550, 550)
@@ -93,7 +94,7 @@ class SettingsDialog(QDialog):
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 16)
         self.font_size_spin.setValue(10)
-        self.font_size_spin.setSuffix(" pt")
+        self.font_size_spin.setSuffix(" " + self.translator.tr('settings_points'))
         font_layout.addWidget(self.font_size_spin)
         font_layout.addStretch()
         
@@ -158,10 +159,10 @@ class SettingsDialog(QDialog):
         
         # Color blind mode
         self.color_blind_combo = QComboBox()
-        self.color_blind_combo.addItem(self.translator.tr('settings_none') if hasattr(self.translator, 'tr') else "None", 'none')
-        self.color_blind_combo.addItem("Protanopia (Red-Blind)", 'protanopia')
-        self.color_blind_combo.addItem("Deuteranopia (Green-Blind)", 'deuteranopia')
-        self.color_blind_combo.addItem("Tritanopia (Blue-Blind)", 'tritanopia')
+        self.color_blind_combo.addItem(self.translator.tr('settings_none'), 'none')
+        self.color_blind_combo.addItem(self.translator.tr('settings_protanopia'), 'protanopia')
+        self.color_blind_combo.addItem(self.translator.tr('settings_deuteranopia'), 'deuteranopia')
+        self.color_blind_combo.addItem(self.translator.tr('settings_tritanopia'), 'tritanopia')
         
         visual_layout.addRow(
             self.translator.tr('settings_color_blind') if hasattr(self.translator, 'tr') else "Color Blind Mode:",
@@ -239,7 +240,7 @@ class SettingsDialog(QDialog):
         self.auto_save_interval = QSpinBox()
         self.auto_save_interval.setRange(30, 600)
         self.auto_save_interval.setValue(300)
-        self.auto_save_interval.setSuffix(" sec")
+        self.auto_save_interval.setSuffix(" " + self.translator.tr('settings_seconds'))
         interval_layout.addWidget(self.auto_save_interval)
         interval_layout.addStretch()
         
@@ -292,6 +293,8 @@ class SettingsDialog(QDialog):
             AppStyles.set_theme(selected_theme)
             if self.parent_window:
                 self.parent_window.setStyleSheet(AppStyles.get_stylesheet())
+                if hasattr(self.parent_window, 'refresh_menu_icons'):
+                    self.parent_window.refresh_menu_icons()
             self.setStyleSheet(AppStyles.get_stylesheet())
             
             # Apply to application
@@ -329,6 +332,9 @@ class SettingsDialog(QDialog):
             # Load accessibility settings
             high_contrast = self.config.get('Accessibility', 'high_contrast', False)
             self.high_contrast_check.setChecked(bool(high_contrast))
+
+            focus_indicator = self.config.get('Accessibility', 'focus_indicator', True)
+            self.focus_indicator_check.setChecked(bool(focus_indicator))
             
             font_multiplier = self.config.get('Accessibility', 'font_size_multiplier', 1.0)
             self.font_multiplier_slider.setValue(int(float(font_multiplier) * 100))
@@ -337,6 +343,10 @@ class SettingsDialog(QDialog):
             index = self.color_blind_combo.findData(color_blind_mode)
             if index >= 0:
                 self.color_blind_combo.setCurrentIndex(index)
+            else:
+                # Older configurations used a boolean false value for the
+                # disabled color-blind mode.
+                self.color_blind_combo.setCurrentIndex(0)
             
             keyboard_nav = self.config.get('Accessibility', 'keyboard_navigation', True)
             self.keyboard_hints_check.setChecked(bool(keyboard_nav))
@@ -350,6 +360,11 @@ class SettingsDialog(QDialog):
             
             auto_save_interval = self.config.get('Application', 'auto_save_interval', 300)
             self.auto_save_interval.setValue(int(auto_save_interval))
+
+            page_size = self.config.get('Application', 'page_size', 50)
+            if self.page_size_combo.findText(str(page_size)) < 0:
+                page_size = 50
+            self.page_size_combo.setCurrentText(str(page_size))
             
         except Exception as e:
             logger.error(f"Error loading settings: {e}")
@@ -397,11 +412,20 @@ class SettingsDialog(QDialog):
             self.config.set('Accessibility', 'font_size_multiplier', self.font_multiplier_slider.value() / 100.0)
             self.config.set('Accessibility', 'color_blind_mode', self.color_blind_combo.currentData())
             self.config.set('Accessibility', 'keyboard_navigation', self.keyboard_hints_check.isChecked())
+            self.config.set('Accessibility', 'focus_indicator', self.focus_indicator_check.isChecked())
             self.config.set('Accessibility', 'screen_reader_support', self.screen_reader_check.isChecked())
             
             # Save performance settings
             self.config.set('Application', 'auto_save', self.auto_save_check.isChecked())
             self.config.set('Application', 'auto_save_interval', self.auto_save_interval.value())
+            self.config.set('Application', 'page_size', int(self.page_size_combo.currentText()))
+
+            # Make the updated accessibility preference effective immediately.
+            try:
+                from utils.accessibility import get_accessibility_manager
+                get_accessibility_manager().update_settings()
+            except Exception as accessibility_error:
+                logger.warning(f"Could not refresh accessibility settings: {accessibility_error}")
             
             # Save all settings to JSON
             self.config.save_all_to_json()
@@ -421,6 +445,19 @@ class SettingsDialog(QDialog):
                 f"Error saving settings: {e}"
             )
     
+    def reject(self):
+        """Close without saving and restore any previewed theme."""
+        if AppStyles.get_current_theme() != self._original_theme:
+            AppStyles.set_theme(self._original_theme)
+            app = QApplication.instance()
+            if app:
+                AppStyles.apply_theme_to_app(app)
+            if self.parent_window:
+                self.parent_window.setStyleSheet(AppStyles.get_stylesheet())
+                if hasattr(self.parent_window, 'refresh_menu_icons'):
+                    self.parent_window.refresh_menu_icons()
+        super().reject()
+
     def reset_to_defaults(self):
         """Reset all settings to defaults"""
         reply = QMessageBox.question(
@@ -441,7 +478,7 @@ class SettingsDialog(QDialog):
             self.color_blind_combo.setCurrentIndex(0)
             self.keyboard_hints_check.setChecked(True)
             self.focus_indicator_check.setChecked(True)
-            self.screen_reader_check.setChecked(False)
+            self.screen_reader_check.setChecked(True)
             self.auto_save_check.setChecked(True)
             self.auto_save_interval.setValue(300)
             self.page_size_combo.setCurrentText('50')

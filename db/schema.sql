@@ -43,6 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_sources_country ON sources (country);
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS contents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NULL,
     content_data TEXT NOT NULL,
     attachments TEXT NULL,
     note TEXT NULL,
@@ -70,7 +71,7 @@ CREATE TABLE IF NOT EXISTS content_analysis (
     content_id INTEGER NOT NULL,
     list_names_people TEXT NULL,
     list_names_places TEXT NULL,
-    coordinates TEXT NULL,
+    list_coordinates TEXT NULL,
     classification TEXT NULL,
     list_sides TEXT NULL,
     date_analysis TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,

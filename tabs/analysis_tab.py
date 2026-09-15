@@ -227,20 +227,21 @@ class ContentAnalysisTab(BaseTableTab):
                         try:
                             # Map CSV columns to database fields
                             analysis_data = {
-                                'content_id': row.get('content_id', row.get('Content ID', '')),
-                                'list_names_people': row.get('list_names_people', row.get('List Names People', '')),
-                                'list_names_places': row.get('list_names_places', row.get('List Names Places', '')),
-                                'coordinates': row.get('coordinates', row.get('Coordinates', '')),
-                                'classification': row.get('classification', row.get('Classification', '')),
-                                'list_sides': row.get('list_sides', row.get('List Sides', '')),
-                                'date_analysis': row.get('date_analysis', row.get('Date Analysis', '')),
-                                'date_creation': row.get('date_creation', row.get('Date Creation', '')),
-                                'date_modified': row.get('date_modified', row.get('Date Modified', '')),
+                                'content_id': row.get('content_id', row.get('Content ID', '')) or '',
+                                'list_names_people': row.get('list_names_people', row.get('List Names People', '')) or None,
+                                'list_names_places': row.get('list_names_places', row.get('List Names Places', '')) or None,
+                                'coordinates': row.get('coordinates', row.get('Coordinates', '')) or None,
+                                'classification': row.get('classification', row.get('Classification', '')) or None,
+                                'list_sides': row.get('list_sides', row.get('List Sides', '')) or None,
+                                'date_analysis': row.get('date_analysis', row.get('Date Analysis', '')) or None,
+                                'date_creation': row.get('date_creation', row.get('Date Creation', '')) or None,
                             }
                             
-                            if analysis_data['content_id']:
+                            if str(analysis_data['content_id']).strip():
                                 DatabaseManager.add_content_analysis(analysis_data)
                                 imported_count += 1
+                            else:
+                                errors.append(f"Row {row_num}: Content ID is required")
                         except Exception as e:
                             errors.append(f"Row {row_num}: {str(e)}")
                 
@@ -362,12 +363,17 @@ class ContentAnalysisTab(BaseTableTab):
             table.setRowCount(min(len(data), 10))  # Limit to 10 for comparison
             
             for row_idx, row_data in enumerate(data[:10]):
-                table.setItem(row_idx, 0, QTableWidgetItem(str(row_data.get('id', ''))))
-                table.setItem(row_idx, 1, QTableWidgetItem(str(row_data.get('classification', ''))))
-                table.setItem(row_idx, 2, QTableWidgetItem(str(row_data.get('list_names_people', ''))[:50]))
-                table.setItem(row_idx, 3, QTableWidgetItem(str(row_data.get('list_names_places', ''))[:50]))
-                table.setItem(row_idx, 4, QTableWidgetItem(str(row_data.get('coordinates', ''))[:30]))
-                table.setItem(row_idx, 5, QTableWidgetItem(str(row_data.get('list_sides', ''))[:50]))
+                def display_value(key, limit=None):
+                    value = row_data.get(key, '')
+                    text = '' if value is None else str(value)
+                    return text[:limit] if limit else text
+
+                table.setItem(row_idx, 0, QTableWidgetItem(display_value('id')))
+                table.setItem(row_idx, 1, QTableWidgetItem(display_value('classification')))
+                table.setItem(row_idx, 2, QTableWidgetItem(display_value('list_names_people', 50)))
+                table.setItem(row_idx, 3, QTableWidgetItem(display_value('list_names_places', 50)))
+                table.setItem(row_idx, 4, QTableWidgetItem(display_value('coordinates', 30)))
+                table.setItem(row_idx, 5, QTableWidgetItem(display_value('list_sides', 50)))
             
             table.resizeColumnsToContents()
             layout.addWidget(table)
@@ -423,12 +429,12 @@ class ContentAnalysisTab(BaseTableTab):
             
             # Build summary
             summary = f"""
-📊 {self.translator.tr('stats_analysis_title')}
+{self.translator.tr('stats_analysis_title')}
 
 {self.translator.tr('stats_total_records')}: {total}
 
 {self.translator.tr('stats_classifications')}:
-{chr(10).join(f'  • {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(classifications.items(), key=lambda x: -x[1]))}
+{chr(10).join(f'  {k}: {v} ({v/total*100:.1f}%)' for k, v in sorted(classifications.items(), key=lambda x: -x[1]))}
 
 {self.translator.tr('stats_unique_people')}: {len(all_people)}
 {self.translator.tr('stats_top_people')}: {', '.join(list(all_people)[:5])}{'...' if len(all_people) > 5 else ''}

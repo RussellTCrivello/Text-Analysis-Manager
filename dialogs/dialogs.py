@@ -25,6 +25,22 @@ from icons.icon_manager import setup_icon_button
 logger = get_logger(__name__)
 
 
+def _display_text(value) -> str:
+    """Convert nullable database values to form text without exposing ``None``."""
+    return '' if value is None else str(value)
+
+
+def _show_attachment_cleanup_warning(parent, translator, failures):
+    """Tell the user when a saved record still has managed files to clean up."""
+    if not failures:
+        return
+    paths = '\n'.join(str(path) for path in failures)
+    message = translator.tr('msg_attachment_cleanup_failed', paths=paths)
+    if message == 'msg_attachment_cleanup_failed':
+        message = f"The record was saved, but some attachment files could not be removed:\n{paths}"
+    QMessageBox.warning(parent, translator.tr('msg_warning'), message)
+
+
 def _to_datetime(val):
     """Convert various date types to datetime for QDateTimeEdit"""
     if val is None:
@@ -200,16 +216,16 @@ class SourceDialog(QDialog):
     
     def populate_data(self, data: Dict):
         """Populate form with existing data"""
-        self.name_edit.setText(str(data.get('name', '')))
-        self.type_edit.setText(str(data.get('type', '')))
-        self.link_edit.setText(str(data.get('link_sources', '')))
-        self.importance_widget.set_value(float(data.get('importance', 0.0)))
-        self.country_edit.setText(str(data.get('country', '')))
-        self.city_edit.setText(str(data.get('city', '')))
-        self.description_edit.setPlainText(str(data.get('description', '')))
-        self.accounts_widget.set_value(str(data.get('accounts', '')))
-        self.ownership_edit.setText(str(data.get('ownership', '')))
-        self.note_edit.setPlainText(str(data.get('note', '')))
+        self.name_edit.setText(_display_text(data.get('name')))
+        self.type_edit.setText(_display_text(data.get('type')))
+        self.link_edit.setText(_display_text(data.get('link_sources')))
+        self.importance_widget.set_value(float(data.get('importance') or 0.0))
+        self.country_edit.setText(_display_text(data.get('country')))
+        self.city_edit.setText(_display_text(data.get('city')))
+        self.description_edit.setPlainText(_display_text(data.get('description')))
+        self.accounts_widget.set_value(_display_text(data.get('accounts')))
+        self.ownership_edit.setText(_display_text(data.get('ownership')))
+        self.note_edit.setPlainText(_display_text(data.get('note')))
         
         if data.get('date_entry'):
             date_val = data['date_entry']
@@ -373,10 +389,11 @@ class ContentDialog(QDialog):
         
         # Enhanced File Attachments with folder organization
         self.attachment_widget = AttachmentManagerWidget(
-            self, 
+            self,
             translator=self.translator,
             source_name=self.get_current_source_name(),
-            allow_multiple=True
+            allow_multiple=True,
+            defer_file_changes=True
         )
         content_form.addRow(self.translator.tr('lbl_attachments') + ":", self.attachment_widget)
         
@@ -468,9 +485,9 @@ class ContentDialog(QDialog):
         if source_name:
             self.attachment_widget.set_source_name(source_name)
         
-        self.title_edit.setText(str(data.get('title', '')))
-        self.content_edit.setPlainText(str(data.get('content_data', '')))
-        self.importance_widget.set_value(float(data.get('importance', 0.0)))
+        self.title_edit.setText(_display_text(data.get('title')))
+        self.content_edit.setPlainText(_display_text(data.get('content_data')))
+        self.importance_widget.set_value(float(data.get('importance') or 0.0))
         
         if data.get('date_content'):
             date_val = data['date_content']
@@ -484,7 +501,7 @@ class ContentDialog(QDialog):
             attachments = [f.strip() for f in attachments_str.split(';') if f.strip()]
             self.attachment_widget.set_files(attachments)
         
-        self.note_edit.setPlainText(str(data.get('note', '')))
+        self.note_edit.setPlainText(_display_text(data.get('note')))
     
     def save(self):
         """Save form data"""
@@ -533,6 +550,19 @@ class ContentDialog(QDialog):
         self.result = data
         self.accept()
 
+    def reject(self):
+        """Discard attachment changes when the dialog is cancelled."""
+        self.rollback_attachment_changes()
+        super().reject()
+
+    def commit_attachment_changes(self) -> List[str]:
+        """Finalize attachment file changes after the record is persisted."""
+        return self.attachment_widget.commit_file_changes()
+
+    def rollback_attachment_changes(self):
+        """Undo attachment file changes when persistence is cancelled/failed."""
+        self.attachment_widget.rollback_file_changes()
+
 
 class ContentAnalysisDialog(QDialog):
     """Enhanced content analysis dialog with all fields"""
@@ -542,6 +572,7 @@ class ContentAnalysisDialog(QDialog):
         self.translator = translator
         self.analysis_data = analysis_data
         self.result = None
+        self.selected_content_id = None
         self.setWindowTitle(title)
         # Apply responsive size
         from styles.styles import AppStyles
@@ -591,12 +622,15 @@ class ContentAnalysisDialog(QDialog):
             if dialog.exec_() == QDialog.Accepted and dialog.result:
                 try:
                     new_id = DatabaseManager.add_content(dialog.result)
+                    cleanup_failures = dialog.commit_attachment_changes()
+                    _show_attachment_cleanup_warning(self, self.translator, cleanup_failures)
                     QMessageBox.information(self, self.translator.tr('msg_success'),
                                           self.translator.tr('msg_record_added'))
                     self.refresh_content_combo()
                     self.content_combo.set_selected_id(new_id)
                     return new_id
                 except Exception as e:
+                    dialog.rollback_attachment_changes()
                     QMessageBox.critical(self, self.translator.tr('msg_error'), str(e))
             return None
         
@@ -683,17 +717,22 @@ class ContentAnalysisDialog(QDialog):
         layout.addLayout(btn_layout)
     
     def on_content_selected(self, content_id):
-        """Handle content selection change"""
-        # This method is called when a content is selected from the combo box
-        # Currently used for future attachment organization features
-        pass
+        """Track the content currently associated with the analysis form."""
+        self.selected_content_id = content_id
+        # Keeping this state explicit makes the selection available to future
+        # attachment/link actions without performing an implicit database write.
+        self.content_combo.setToolTip(
+            self.translator.tr('lbl_content_id') + f": {content_id}"
+            if content_id else self.translator.tr('lbl_content_id')
+        )
     
     def refresh_content_combo(self):
         """Refresh content combo box"""
         contents = DatabaseManager.get_all_contents()
         items = []
         for c in contents:
-            content_text = c.get('content_data', '')[:50] + '...' if len(c.get('content_data', '')) > 50 else c.get('content_data', '')
+            content_value = _display_text(c.get('content_data'))
+            content_text = content_value[:50] + '...' if len(content_value) > 50 else content_value
             items.append({'id': c['id'], 'text': f"ID {c['id']}: {content_text}", 'name': content_text})
         self.content_combo.set_items(items)
     
@@ -704,13 +743,13 @@ class ContentAnalysisDialog(QDialog):
         if content_id:
             self.content_combo.set_selected_id(content_id)
         
-        self.classification_edit.setText(str(data.get('classification', '')))
-        self.people_edit.set_value(str(data.get('list_names_people', '')))
-        self.places_edit.set_value(str(data.get('list_names_places', '')))
+        self.classification_edit.setText(_display_text(data.get('classification')))
+        self.people_edit.set_value(_display_text(data.get('list_names_people')))
+        self.places_edit.set_value(_display_text(data.get('list_names_places')))
         # Try both 'coordinates' (aliased) and 'list_coordinates' (database field) for backward compatibility
-        coord_value = data.get('coordinates') or data.get('list_coordinates') or ''
-        self.coordinates_widget.set_value(str(coord_value))
-        self.sides_edit.set_value(str(data.get('list_sides', '')))
+        coord_value = data.get('coordinates') or data.get('list_coordinates')
+        self.coordinates_widget.set_value(_display_text(coord_value))
+        self.sides_edit.set_value(_display_text(data.get('list_sides')))
     
     def save(self):
         """Save form data"""
