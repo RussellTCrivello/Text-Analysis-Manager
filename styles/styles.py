@@ -4566,36 +4566,44 @@ class AppStyles:
     
     @staticmethod
     def apply_fixed_size(dialog, width: int, height: int):
+        """Apply a readable initial dialog size without exceeding the screen.
+
+        The historical helper used the requested size unconditionally. That
+        made import, search, and comparison dialogs open larger than compact
+        and DPI-scaled workspaces. Dialogs remain resizable, but their initial
+        and minimum sizes now respect the available screen geometry; their
+        internal scroll areas handle the remaining content.
         """
-        Apply initial size to a dialog/window while allowing user to resize.
-        Sets minimum size based on content and allows expansion.
-        
-        Args:
-            dialog: QDialog or QWidget to apply size to
-            width: Initial/minimum width in pixels
-            height: Initial/minimum height in pixels
-        """
-        from PyQt5.QtWidgets import QSizePolicy
-        from PyQt5.QtCore import QSize
-        
-        # Set minimum size to ensure content is readable
-        dialog.setMinimumSize(int(width * 0.7), int(height * 0.7))
-        
-        # Set initial size (resize to this)
-        dialog.resize(width, height)
-        
-        # Allow resizing - set size policy to Preferred
+        from PyQt5.QtWidgets import QApplication, QSizePolicy
+
+        screen = dialog.screen() if hasattr(dialog, 'screen') else None
+        screen = screen or QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen else None
+        if available and available.isValid():
+            # Leave a small breathing room for window chrome and task bars.
+            available_width = max(320, available.width() - 32)
+            available_height = max(240, available.height() - 32)
+        else:
+            available_width = width
+            available_height = height
+
+        minimum_width = min(max(280, int(width * 0.7)), available_width)
+        minimum_height = min(max(220, int(height * 0.7)), available_height)
+        initial_width = min(max(width, minimum_width), available_width)
+        initial_height = min(max(height, minimum_height), available_height)
+
+        dialog.setMinimumSize(minimum_width, minimum_height)
+        dialog.resize(initial_width, initial_height)
         dialog.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        
-        # Adjust to content if possible
+
         if hasattr(dialog, 'adjustSize'):
             dialog.adjustSize()
-            # Ensure we don't go smaller than content requires
             content_size = dialog.sizeHint()
             if content_size.isValid():
-                final_width = max(width, content_size.width())
-                final_height = max(height, content_size.height())
-                dialog.resize(final_width, final_height)
+                dialog.resize(
+                    min(max(initial_width, content_size.width()), available_width),
+                    min(max(initial_height, content_size.height()), available_height),
+                )
     
     @staticmethod
     def apply_fixed_width(widget, width: int):
