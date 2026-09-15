@@ -333,7 +333,7 @@ class BaseTableTab(QWidget):
         return callbacks
 
     def setup_ui(self):
-        """Setup UI with toolbar and table - with unified scrolling"""
+        """Setup UI — Professional research facade: filter → command → selection → data → pagination"""
         from PyQt5.QtWidgets import QSizePolicy, QFrame, QScrollArea
 
         # Main layout (no margins - scroll area handles it)
@@ -365,23 +365,23 @@ class BaseTableTab(QWidget):
         self.toolbar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         scroll_layout.addWidget(self.toolbar, 0)  # stretch factor 0 = don't expand
 
-        # Dataset context stays close to the table so users can distinguish
-        # the active result set from the underlying database total.
+        # Compact result context — muted, directly above table (professional explorer)
         self.result_summary_label = QLabel()
         self.result_summary_label.setObjectName('tableResultSummary')
-        self.result_summary_label.setStyleSheet(AppStyles.get_component_style('table_result_summary'))
+        self.result_summary_label.setStyleSheet("QLabel#tableResultSummary { color: #64748B; font-size: 9pt; font-weight: 600; letter-spacing: 0.3px; padding: 4px 2px; }")
         self.result_summary_label.setAccessibleName(self.translator.tr('table_result_summary', default='Table result summary'))
         scroll_layout.addWidget(self.result_summary_label, 0)
 
-        # Conditional selection actions appear only when the user has selected
-        # rows, keeping the default toolbar calm without hiding bulk work.
+        # Contextual selection bar — appears only when rows are selected (modern, blue tint)
         self.selection_action_bar = QWidget()
         self.selection_action_bar.setObjectName('tableSelectionActionBar')
+        self.selection_action_bar.setStyleSheet("QWidget#tableSelectionActionBar { background-color: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; } QLabel#tableSelectionCount { color: #1D4ED8; font-weight: 700; font-size: 10pt; }")
         selection_layout = QHBoxLayout(self.selection_action_bar)
-        selection_layout.setContentsMargins(0, 0, 0, 4)
+        selection_layout.setContentsMargins(12, 8, 12, 8)
         selection_layout.setSpacing(AppStyles.get_spacing(1))
         self.selection_count_label = QLabel()
         self.selection_count_label.setObjectName('tableSelectionCount')
+        self.selection_count_label.setStyleSheet("color: #1D4ED8; font-weight: 700;")
         selection_layout.addWidget(self.selection_count_label)
         selection_layout.addStretch()
         self.selection_bulk_button = QPushButton()
@@ -395,15 +395,17 @@ class BaseTableTab(QWidget):
         self.selection_clear_button.setText(self.translator.tr('btn_clear', default='Clear'))
         self.selection_clear_button.setToolTip(self.selection_clear_button.text())
         self.selection_clear_button.setAccessibleName(self.selection_clear_button.text())
+        self.selection_clear_button.setStyleSheet(AppStyles.get_button_style('transparent'))
         self.selection_clear_button.clicked.connect(lambda: self.data_table.clearSelection())
         selection_layout.addWidget(self.selection_clear_button)
         self.selection_action_bar.setVisible(False)
         scroll_layout.addWidget(self.selection_action_bar, 0)
 
-        # Container frame for table area with fixed proportions
+        # Table as a single coherent data surface — card with subtle border (theme-aware)
         table_container = QFrame()
         table_container.setObjectName('tableWorkspace')
-        table_container.setFrameShape(QFrame.NoFrame)
+        table_container.setFrameShape(QFrame.StyledPanel)
+        # Styling is handled by AppStyles.get_stylesheet() via QFrame#tableWorkspace selector so dark/light stays consistent.
         table_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         table_layout = QVBoxLayout(table_container)
         table_layout.setContentsMargins(0, 0, 0, 0)
