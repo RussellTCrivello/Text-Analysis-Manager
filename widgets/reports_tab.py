@@ -417,7 +417,7 @@ class ChartDesigner(QWidget):
                 background-color: #ECF0F1;
                 color: #2C3E50;
                 border: 2px solid #BDC3C7;
-                border-radius: 8px;
+                border-radius: 10px;
                 padding: 10px 16px;
                 font-weight: bold;
                 font-size: 12px;
@@ -1119,7 +1119,7 @@ class QueryBuilder(QWidget):
             QRadioButton {
                 background-color: #FFFFFF;
                 border: 2px solid #3498DB;
-                border-radius: 15px;
+                border-radius: 12px;
                 padding: 8px 20px;
                 font-weight: bold;
                 font-size: 11px;
@@ -2816,7 +2816,7 @@ class ReportsTab(QWidget):
                 th, td {{ border: 1px solid #DEE2E6; padding: 10px; text-align: {text_align}; }}
                 th {{ background-color: #2C3E50; color: white; }}
                 tr:nth-child(even) {{ background-color: #F8F9FA; }}
-                .stats {{ background-color: #E8F4FD; padding: 15px; border-radius: 8px; margin: 20px 0; }}
+                .stats {{ background-color: #E8F4FD; padding: 15px; border-radius: 10px; margin: 20px 0; }}
                 .chart-placeholder {{ text-align: center; padding: 20px; background: #F8F9FA; border: 1px dashed #DEE2E6; margin: 20px 0; }}
                 .footer {{ margin-top: 30px; padding-top: 15px; border-top: 1px solid #DEE2E6; color: #7F8C8D; font-size: 11px; text-align: center; }}
             </style>

@@ -188,11 +188,11 @@ class StatisticsCard(QFrame):
             QFrame {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 {bg_color}, stop:1 {bg_light});
-                border: 2px solid {border_color};
-                border-radius: 8px;
+                border: 1px solid {border_color};
+                border-radius: 12px;
             }}
             QFrame:hover {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 {bg_color}, stop:1 {bg_light});
             }}
@@ -254,7 +254,7 @@ class TimelineChartWidget(QWidget):
             QFrame {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
-                border-radius: 8px;
+                border-radius: 12px;
             }}
         """)
         chart_layout = QVBoxLayout(self.chart_frame)
@@ -529,7 +529,7 @@ class AnalysisPanel(QFrame):
             QFrame {
                 background-color: #F8F9FA;
                 border: 1px solid #DEE2E6;
-                border-radius: 8px;
+                border-radius: 12px;
             }
         """)
     
@@ -647,7 +647,7 @@ class TimelineAxisWidget(QWidget):
         center_x = width // 2
         
         # Draw main timeline line (vertical)
-        line_pen = QPen(QColor("#3498DB"), 4)
+        line_pen = QPen(QColor("#2563EB"), 3)
         painter.setPen(line_pen)
         painter.drawLine(center_x, 0, center_x, self.height())
         
@@ -880,19 +880,19 @@ class TimelineEventWidget(QFrame):
                 QFrame {{
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                         stop:0 {selected_bg}, stop:1 {bg_hover});
-                    border: 3px solid {accent_color};
-                    border-radius: 8px;
+                    border: 1.5px solid {accent_color};
+                    border-radius: 12px;
                 }}
             """)
         else:
             self.setStyleSheet(f"""
                 QFrame {{
                     background-color: {bg_color};
-                    border: 2px solid {border_color};
-                    border-radius: 8px;
+                    border: 1px solid {border_color};
+                    border-radius: 12px;
                 }}
                 QFrame:hover {{
-                    border: 2px solid {accent_color};
+                    border: 1.5px solid {accent_color};
                     background-color: {bg_hover};
                 }}
             """)
@@ -1127,7 +1127,7 @@ class TimelineWidget(QWidget):
             QFrame {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                     stop:0 {primary_color}, stop:1 {secondary_color});
-                border-radius: 8px;
+                border-radius: 12px;
                 padding: {stats_padding}px;
             }}
         """)
@@ -1160,7 +1160,7 @@ class TimelineWidget(QWidget):
             QFrame {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
-                border-radius: 8px;
+                border-radius: 12px;
                 padding: {controls_padding}px;
             }}
         """)
@@ -1186,12 +1186,12 @@ class TimelineWidget(QWidget):
         self.sort_by_combo.setStyleSheet(f"""
             QComboBox {{
                 background-color: {input_bg};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 4px 8px;
             }}
             QComboBox:hover {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
             }}
         """)
         self.sort_by_combo.currentIndexChanged.connect(self.on_sort_by_changed)
@@ -1207,12 +1207,12 @@ class TimelineWidget(QWidget):
         self.sort_order_combo.setStyleSheet(f"""
             QComboBox {{
                 background-color: {input_bg};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 4px 8px;
             }}
             QComboBox:hover {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
             }}
         """)
         self.sort_order_combo.currentIndexChanged.connect(self.on_sort_order_changed)
@@ -1265,12 +1265,12 @@ class TimelineWidget(QWidget):
         self.date_from.setStyleSheet(f"""
             QDateEdit {{
                 background-color: {input_bg};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 4px;
             }}
             QDateEdit:hover {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
             }}
         """)
         self.date_from.dateChanged.connect(self.apply_filters)
@@ -1288,12 +1288,12 @@ class TimelineWidget(QWidget):
         self.date_to.setStyleSheet(f"""
             QDateEdit {{
                 background-color: {input_bg};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 4px;
             }}
             QDateEdit:hover {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
             }}
         """)
         self.date_to.dateChanged.connect(self.apply_filters)
@@ -1356,12 +1356,12 @@ class TimelineWidget(QWidget):
         self.chart_type_combo.setStyleSheet(f"""
             QComboBox {{
                 background-color: {input_bg};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 4px 8px;
             }}
             QComboBox:hover {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
             }}
         """)
         self.chart_type_combo.currentIndexChanged.connect(self.on_chart_type_changed)
@@ -1419,12 +1419,12 @@ class TimelineWidget(QWidget):
         self.search_input.setStyleSheet(f"""
             QLineEdit {{
                 background-color: {input_bg};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 4px 8px;
             }}
             QLineEdit:focus {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
             }}
         """)
         self.search_input.textChanged.connect(self.on_search_changed)
@@ -1444,12 +1444,12 @@ class TimelineWidget(QWidget):
         self.people_filter_combo.setStyleSheet(f"""
             QComboBox {{
                 background-color: {input_bg};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 4px 8px;
             }}
             QComboBox:hover {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
             }}
         """)
         self.people_filter_combo.currentTextChanged.connect(self.on_people_filter_changed)
@@ -1469,12 +1469,12 @@ class TimelineWidget(QWidget):
         self.places_filter_combo.setStyleSheet(f"""
             QComboBox {{
                 background-color: {input_bg};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 4px 8px;
             }}
             QComboBox:hover {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
             }}
         """)
         self.places_filter_combo.currentTextChanged.connect(self.on_places_filter_changed)
@@ -1494,12 +1494,12 @@ class TimelineWidget(QWidget):
         self.classification_filter_combo.setStyleSheet(f"""
             QComboBox {{
                 background-color: {input_bg};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 4px 8px;
             }}
             QComboBox:hover {{
-                border: 2px solid {accent_color};
+                border: 1.5px solid {accent_color};
             }}
         """)
         self.classification_filter_combo.currentTextChanged.connect(self.on_classification_filter_changed)
@@ -1510,7 +1510,7 @@ class TimelineWidget(QWidget):
         clear_search_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {colors.get('LIGHT_BG', '#F8F9FA')};
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 6px;
                 padding: 6px;
             }}
@@ -1615,7 +1615,7 @@ class TimelineWidget(QWidget):
         scrollbar_style = f"""
             QScrollArea {{
                 border: 1px solid {border_color};
-                border-radius: 8px;
+                border-radius: 12px;
                 background-color: {scroll_bg};
             }}
             QScrollBar:vertical {{
@@ -1623,12 +1623,12 @@ class TimelineWidget(QWidget):
                 background: {colors.get('LIGHT_BG', '#F0F0F0')};
                 width: 16px;
                 margin: 0px;
-                border-radius: 8px;
+                border-radius: 12px;
             }}
             QScrollBar::handle:vertical {{
                 background: {accent_color};
                 min-height: 30px;
-                border-radius: 8px;
+                border-radius: 12px;
                 margin: 2px;
             }}
             QScrollBar::handle:vertical:hover {{
@@ -2195,7 +2195,7 @@ class TimelineWidget(QWidget):
                     QPushButton {{
                         background-color: {accent_color};
                         color: #FFFFFF;
-                        border: 2px solid {accent_color};
+                        border: 1.5px solid {accent_color};
                         border-radius: 6px;
                         padding: 6px 12px;
                         font-weight: bold;
@@ -2209,12 +2209,12 @@ class TimelineWidget(QWidget):
                     QPushButton {{
                         background-color: {input_bg};
                         color: {text_primary};
-                        border: 2px solid {border_color};
+                        border: 1px solid {border_color};
                         border-radius: 6px;
                         padding: 6px 12px;
                     }}
                     QPushButton:hover {{
-                        border: 2px solid {accent_color};
+                        border: 1.5px solid {accent_color};
                         background-color: {colors.get('LIGHT_BG', '#F8F9FA')};
                     }}
                 """)
